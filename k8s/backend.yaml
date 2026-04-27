@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: your-dockerhub/k8s-agent-backend:latest
+          image: hardik0811/k8s-agent-backend:latest
           ports:
             - containerPort: 8000
           env:
