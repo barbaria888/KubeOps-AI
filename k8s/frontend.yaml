@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: hardik0811/kubeops-ai-backend:latest
+          image: hardik0811/kubeops-ai-frontend:latest
           ports:
             - containerPort: 80
           resources:
