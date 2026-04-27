@@ -20,18 +20,21 @@ RUN curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release
 # -------------------------
 # Install k8sgpt (robust)
 # -------------------------
+# -------------------------
+# Install k8sgpt (robust)
+# -------------------------
 RUN set -eux; \
     K8SGPT_URL=$(curl -s https://api.github.com/repos/k8sgpt-ai/k8sgpt/releases/latest \
       | grep browser_download_url \
-      | grep -E "k8sgpt.*linux.*amd64.*tar.gz" \
+      | grep -iE "k8sgpt_Linux_x86_64\.tar\.gz" \
       | cut -d '"' -f 4); \
     echo "Downloading from: $K8SGPT_URL"; \
+    test -n "$K8SGPT_URL"; \
     curl -fL "$K8SGPT_URL" -o k8sgpt.tar.gz; \
     tar -xzf k8sgpt.tar.gz; \
     chmod +x k8sgpt; \
     mv k8sgpt /usr/local/bin/k8sgpt; \
-    rm k8sgpt.tar.gz
-# -------------------------
+    rm k8sgpt.tar.gz# -------------------------
 # App setup
 # -------------------------
 WORKDIR /app
