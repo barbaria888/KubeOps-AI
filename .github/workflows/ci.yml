@@ -27,7 +27,7 @@ jobs:
  #for backend image build          
     - name: Build Backend Docker image
       run: |
-        docker build -t hardik0811/kubeops-ai-backend:latest ./api
+        docker build -t hardik0811/kubeops-ai-backend:latest ./app
 
     - name: Push Backend Docker image
       run: |
