@@ -81,7 +81,7 @@ To deploy this entire stack into a Kubernetes cluster, head over to the `k8s/` f
 
 ```bash
 # Don't forget to push these to your image registry!
-docker build -t yourregistry/k8s-agent-backend:latest .
+docker build -t hardik0811/k8s-agent-backend:latest .
 cd frontend && docker build -t yourregistry/k8s-agent-frontend:latest .
 
 kubectl apply -f k8s/namespace.yaml
