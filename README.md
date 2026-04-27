@@ -1,4 +1,4 @@
-# 🚀 K8s Agentic AI Dashboard
+# KubeOps-AI
 
 <div align="center">
   <img alt="Kubernetes" src="https://img.shields.io/badge/kubernetes-%23326ce5.svg?style=for-the-badge&logo=kubernetes&logoColor=white"/>
