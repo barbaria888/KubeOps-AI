@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: k8s-ai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: your-dockerhub/k8s-agent-backend:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: OLLAMA_URL
+              value: "http://ollama:11434/api/generate"
+            - name: KUBECONFIG
+              value: "/root/.kube/k3s.yaml"
+          resources:
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          volumeMounts:
+            - name: kubeconfig
+              mountPath: /root/.kube
+      volumes:
+        - name: kubeconfig
+          hostPath:
+            path: /etc/rancher/k3s/k3s.yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: k8s-ai
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 8000
+      targetPort: 8000
