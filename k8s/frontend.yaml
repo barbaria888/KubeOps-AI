@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: your-dockerhub/k8s-agent-frontend:latest
+          image: hardik0811/k8s-agent-frontend:latest
           ports:
             - containerPort: 80
           resources:
