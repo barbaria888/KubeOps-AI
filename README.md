@@ -12,6 +12,7 @@
 **K8s Agentic AI Dashboard** is a powerful, autonomous troubleshooting pipeline that leverages local AI (Ollama + Gemma 2b) to analyze your Kubernetes clusters, deduce root causes, suggest actionable fixes, and maintain an **Incident Memory** vector database. Features a full **Approve & Run** interface to fix issues safely in just one click.
 
 <img width="1672" height="941" alt="architecture-diagram" src="https://github.com/user-attachments/assets/5bf6f41a-b7f3-49ef-afda-40735a03e663" />
+
 ---
 
 ## ✨ Features
