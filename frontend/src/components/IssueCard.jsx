@@ -2,19 +2,32 @@ import ActionButton from "./ActionButton";
 
 export default function IssueCard({ data }) {
   return (
-    <div style={{ border: "1px solid #ccc", padding: 15, marginBottom: 10 }}>
-      <h3>Issue</h3>
-      <p>{data.issue}</p>
+    <div className="issue-card">
+      <div className="issue-header">
+        <h3>
+          <span className="issue-badge">Alert</span>
+          Issue Detected
+        </h3>
+        <p className="issue-desc">{data.issue}</p>
+      </div>
 
-      <h4>Explanation</h4>
-      <p>{data.explanation}</p>
+      <div className="issue-section">
+        <h4>AI Diagnosis</h4>
+        <div className="issue-explanation">
+          {data.explanation}
+        </div>
+      </div>
 
-      <h4>Fix</h4>
-      <code>{data.suggested_action}</code>
+      <div className="issue-section">
+        <h4>Suggested Remediation</h4>
+        <div className="code-block-wrapper">
+          <code className="code-block">{data.suggested_action}</code>
+        </div>
+      </div>
 
-      <br /><br />
-
-      <ActionButton command={data.suggested_action} safe={data.safe} issue={data.issue} />
+      <div className="card-actions">
+        <ActionButton command={data.suggested_action} safe={data.safe} issue={data.issue} />
+      </div>
     </div>
   );
 }

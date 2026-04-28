@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API = "http://localhost:8000";
+const API = "/api";
 
 export const fetchIssues = () => axios.get(`${API}/analyze`);
 export const runAction = (command, issue) =>
