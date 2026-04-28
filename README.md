@@ -85,17 +85,16 @@ npm run dev
 
 ## 🐳 Kubernetes Deployment
 
-To deploy this entire stack into a Kubernetes cluster, head over to the `k8s/` folder.
+To deploy this entire stack into your Kubernetes cluster, head over to the `k8s/` folder.
 
 ```bash
-# Don't forget to push these to your image registry!
-docker build -t hardik0811/k8s-agent-backend:latest .
-cd frontend && docker build -t hardik0811/k8s-agent-frontend:latest .
 
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -f k8s/ollama.yaml
 kubectl apply -f k8s/backend.yaml
 kubectl apply -f k8s/frontend.yaml
+# or simply
+kubectl apply -f k8s/
 ```
 
 *Note: Our backend deployment expects access to Kubeconfig. By default, it maps `/etc/rancher/k3s/k3s.yaml` for K3s clusters.*
