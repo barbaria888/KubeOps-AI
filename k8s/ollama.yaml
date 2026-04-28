@@ -1,3 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-pvc
+  namespace: k8s-ai
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi # TinyLlama only needs ~650MB, but 5Gi leaves breathing room
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -21,16 +33,22 @@ spec:
           resources:
             limits:
               memory: "2Gi"
-              cpu: "500m"
+              cpu: "2000m"  # Minimum for usable CPU inference speed
             requests:
               memory: "1Gi"
-              cpu: "250m"
+              cpu: "1000m"
+          lifecycle:
+            postStart:
+              exec:
+                # Automatically downloads TinyLlama on startup
+                command: ["/bin/sh", "-c", "sleep 5 && ollama pull tinyllama"]
           volumeMounts:
             - name: ollama-data
               mountPath: /root/.ollama
       volumes:
         - name: ollama-data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: ollama-pvc
 ---
 apiVersion: v1
 kind: Service
