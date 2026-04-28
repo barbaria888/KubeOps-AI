@@ -23,6 +23,9 @@
 - **⚡ "Approve & Run" UI**: A beautiful Vite + React Dashboard where administrators review AI-generated reasoning before executing `kubectl` actions.
 - **🐳 Cloud-Native Ready**: Includes native Kubernetes Deployments, Services, and Dockerfiles to run directly within your clusters.
 
+<img width="936" height="467" alt="dashboard-empty" src="https://github.com/user-attachments/assets/d8667305-084f-4848-a4dc-7f657dfb6ba8" />
+<img width="832" height="441" alt="runs-k8sgpt" src="https://github.com/user-attachments/assets/345624af-7471-4515-b3b8-743d81ab3e11" />
+
 ---
 
 ## 🏗️ Architecture
