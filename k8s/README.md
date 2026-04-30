@@ -17,12 +17,14 @@ Assuming you have built the images (see the root `README.md`):
 ```bash
 # 1. Apply the isolating namespace first
 kubectl apply -f namespace.yaml
+kubectl config set-context --current --namespace=k8s-ai
 # 2. Deploy your LLM 
 kubectl apply -f ollama.yaml
 # 3. Deploy the intelligence Core
 kubectl apply -f backend.yaml
 # 4. Deploy the UI
 kubectl apply -f frontend.yaml
+kubectl get pods
 ```
 
 Once Ollama is running, remember to pull your model into the pod:
