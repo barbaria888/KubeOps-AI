@@ -23,13 +23,24 @@ spec:
               value: "http://ollama:11434/api/generate"
             - name: KUBECONFIG
               value: "/root/.kube/k3s.yaml"
+          # AUTO-CONFIGURES K8SGPT ON STARTUP
+          lifecycle:
+            postStart:
+              exec:
+                command: 
+                  - "/bin/sh"
+                  - "-c"
+                  - |
+                    k8sgpt auth add --backend localai --model tinyllama --baseurl http://ollama:11434/v1 && \
+                    k8sgpt auth default --provider localai
           resources:
             limits:
               memory: "1Gi"
               cpu: "500m"
           volumeMounts:
             - name: kubeconfig
-              mountPath: /root/.kube
+              mountPath: /root/.kube/k3s.yaml
+              subPath: k3s.yaml
       volumes:
         - name: kubeconfig
           hostPath:
