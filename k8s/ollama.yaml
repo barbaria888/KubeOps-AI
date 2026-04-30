@@ -8,7 +8,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi # TinyLlama only needs ~650MB, but 5Gi leaves breathing room
+      storage: 2Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -25,6 +25,14 @@ spec:
       labels:
         app: ollama
     spec:
+      # Added toleration to allow scheduling on control-plane nodes
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node-role.kubernetes.io/master" # Added for compatibility with older K8s versions
+        operator: "Exists"
+        effect: "NoSchedule"
       containers:
         - name: ollama
           image: ollama/ollama:latest
@@ -33,14 +41,14 @@ spec:
           resources:
             limits:
               memory: "2Gi"
-              cpu: "2000m"  # Minimum for usable CPU inference speed
+              cpu: "2000m"
             requests:
               memory: "1Gi"
-              cpu: "1000m"
+              # Lowered CPU request slightly to help it fit on smaller nodes
+              cpu: "500m" 
           lifecycle:
             postStart:
               exec:
-                # Automatically downloads TinyLlama on startup
                 command: ["/bin/sh", "-c", "sleep 5 && ollama pull tinyllama"]
           volumeMounts:
             - name: ollama-data
