@@ -13,6 +13,20 @@ spec:
       labels:
         app: backend
     spec:
+      # alowing scheduling on control-plane, master, and unhealthy nodes,{just get scheduled 🙏🥹}
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node-role.kubernetes.io/master"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+      - key: "node.kubernetes.io/unreachable"
+        operator: "Exists"
+        effect: "NoExecute"
       containers:
         - name: backend
           image: hardik0811/kubeops-ai-backend:latest
@@ -23,7 +37,7 @@ spec:
               value: "http://ollama:11434/api/generate"
             - name: KUBECONFIG
               value: "/root/.kube/k3s.yaml"
-          # AUTO-CONFIGURES K8SGPT ON STARTUP
+          # Auto-configures k8sgpt to use local Ollama on startup
           lifecycle:
             postStart:
               exec:
@@ -37,6 +51,9 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "500m"
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
           volumeMounts:
             - name: kubeconfig
               mountPath: /root/.kube/k3s.yaml
