@@ -13,7 +13,7 @@ spec:
       labels:
         app: backend
     spec:
-      # alowing scheduling on control-plane, master, and unhealthy nodes,{just get scheduled 🙏🥹}
+      # Allowing scheduling on all nodes (Control-plane/Master/Unhealthy)
       tolerations:
       - key: "node-role.kubernetes.io/control-plane"
         operator: "Exists"
@@ -30,14 +30,16 @@ spec:
       containers:
         - name: backend
           image: hardik0811/kubeops-ai-backend:latest
+          # ADDED: Explicit command to increase the internal API timeout
+          command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "500"]
           ports:
             - containerPort: 8000
           env:
             - name: OLLAMA_URL
               value: "http://ollama:11434/api/generate"
             - name: KUBECONFIG
-              value: "/root/.kube/k3s.yaml"
-          # Auto-configures k8sgpt to use local Ollama on startup
+              value: "/etc/k3s-config/k3s.yaml"
+          # Auto-configures k8sgpt on startup
           lifecycle:
             postStart:
               exec:
@@ -45,8 +47,8 @@ spec:
                   - "/bin/sh"
                   - "-c"
                   - |
-                    k8sgpt auth add --backend localai --model tinyllama --baseurl http://ollama:11434/v1 && \
-                    k8sgpt auth default --provider localai
+                    k8sgpt auth add --backend ollama --model tinyllama:latest --baseurl http://ollama:11434 && \
+                    k8sgpt auth default --provider ollama
           resources:
             limits:
               memory: "1Gi"
@@ -56,12 +58,13 @@ spec:
               cpu: "100m"
           volumeMounts:
             - name: kubeconfig
-              mountPath: /root/.kube/k3s.yaml
-              subPath: k3s.yaml
+              mountPath: /etc/k3s-config # Folder mount is more stable
+              readOnly: true
       volumes:
         - name: kubeconfig
           hostPath:
-            path: /etc/rancher/k3s/k3s.yaml
+            path: /etc/rancher/k3s
+            type: Directory
 ---
 apiVersion: v1
 kind: Service
