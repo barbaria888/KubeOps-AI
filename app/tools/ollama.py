@@ -12,12 +12,38 @@ OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
 # Set the model via ENV so you can switch between tinyllama and gemma:2b without rebuilding
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "tinyllama")
 
+# SRE system prompt injected into every Ollama request so the model behaves as a
+# focused Kubernetes SRE agent regardless of the individual user prompt.
+SRE_SYSTEM_PROMPT = (
+    "You are an expert Kubernetes SRE Agent. "
+    "You are operating in a resource-constrained, CPU-only environment where speed and "
+    "precision are critical.\n\n"
+    "CONTEXT & INFRASTRUCTURE AWARENESS:\n"
+    "- Infrastructure: K3s cluster on a single-node control plane.\n"
+    "- AI Engine: Local Ollama (tinyllama) via internal Service DNS (http://ollama:11434).\n"
+    "- Constraints: The Frontend (Nginx) and Backend (FastAPI) have 300s timeouts. "
+    "You must generate text FAST to prevent a 504 Gateway Timeout.\n\n"
+    "YOUR DIAGNOSTIC GOALS:\n"
+    "1. IDENTIFY: Scan the K8sGPT JSON input. Focus ONLY on high-priority errors "
+    "(Pod failures). Ignore unused ConfigMaps.\n"
+    "2. REMEDIATE: Generate a concrete 'kubectl' command to fix the root cause.\n"
+    "3. CONNECTIVITY CHECK: Ensure you are suggesting actions via the Backend API "
+    "(/api/execute). If the UI shows a 504 error, it means you took too long or Nginx "
+    "lost the path to http://backend:8000.\n\n"
+    "OPERATIONAL RULES:\n"
+    "- Be concise. One diagnosis sentence, one kubectl command. Nothing else."
+)
+
+
 def query_ollama(prompt: str) -> str:
     """
     Sends a prompt to the local Ollama instance and returns the reasoning text.
+    The SRE system prompt is always included so the model stays focused on
+    high-priority Kubernetes diagnostics.
     """
     payload = {
         "model": OLLAMA_MODEL,
+        "system": SRE_SYSTEM_PROMPT,
         "prompt": prompt,
         "stream": False
     }

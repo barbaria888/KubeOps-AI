@@ -1,5 +1,19 @@
 from app.tools.ollama import query_ollama
 
 def suggest_fix(issue: str):
-    prompt = f"Suggest a kubectl command to fix:\n{issue}\nOnly return command."
+    # Apply explicit remediation rule for ImagePullBackOff before calling the LLM
+    # so we get a deterministic, fast response for the most common failure type.
+    # The LLM is responsible for extracting the correct deployment/container/image
+    # values from the issue text.
+    if "ImagePullBackOff" in issue or "ErrImagePull" in issue:
+        prompt = (
+            f"The following Kubernetes Pod is in ImagePullBackOff:\n{issue}\n\n"
+            "Return ONLY a single kubectl set image command in the form:\n"
+            "kubectl set image deployment/<name> <container>=<correct-image>:<tag>"
+        )
+    else:
+        prompt = (
+            f"Kubernetes Pod failure:\n{issue}\n\n"
+            "Return ONLY a single kubectl command to fix the root cause."
+        )
     return query_ollama(prompt)
