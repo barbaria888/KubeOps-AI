@@ -35,7 +35,7 @@ spec:
         effect: "NoSchedule"
       containers:
         - name: ollama
-          image: ollama/ollama:latest
+          image: alpine/ollama:latest
           ports:
             - containerPort: 11434
           resources:
