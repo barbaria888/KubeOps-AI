@@ -37,6 +37,8 @@ spec:
           env:
             - name: KUBEOPS_ENABLE_VECTOR_STORE
               value: "false"
+            - name: KUBEOPS_LAZY_ANALYSIS
+              value: "true"
             - name: KUBEOPS_MAX_ANALYZED_ISSUES
               value: "1"
             - name: KUBEOPS_K8SGPT_TIMEOUT_SECONDS
