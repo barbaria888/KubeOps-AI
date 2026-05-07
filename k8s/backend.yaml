@@ -56,15 +56,6 @@ spec:
             requests:
               memory: "256Mi"
               cpu: "100m"
-          volumeMounts:
-            - name: kubeconfig
-              mountPath: /etc/k3s-config # Folder mount is more stable
-              readOnly: true
-      volumes:
-        - name: kubeconfig
-          hostPath:
-            path: /etc/rancher/k3s
-            type: Directory
 ---
 apiVersion: v1
 kind: Service
