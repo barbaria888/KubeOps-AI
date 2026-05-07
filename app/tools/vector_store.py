@@ -1,22 +1,53 @@
-import chromadb
-from sentence_transformers import SentenceTransformer
+import os
 
-client = chromadb.Client()
-collection = client.get_or_create_collection("k8s-issues")
+_client = None
+_collection = None
+_model = None
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
+
+def _vector_store_enabled() -> bool:
+    return os.getenv("KUBEOPS_ENABLE_VECTOR_STORE", "true").lower() == "true"
+
+
+def _get_model():
+    global _model
+
+    if _model is None:
+        from sentence_transformers import SentenceTransformer
+
+        _model = SentenceTransformer("all-MiniLM-L6-v2")
+
+    return _model
+
+
+def _get_collection():
+    global _client, _collection
+
+    if _collection is None:
+        import chromadb
+
+        _client = chromadb.Client()
+        _collection = _client.get_or_create_collection("k8s-issues")
+
+    return _collection
 
 def store_issue(issue, solution):
-    embedding = model.encode(issue).tolist()
-    collection.add(
+    if not _vector_store_enabled():
+        return
+
+    embedding = _get_model().encode(issue).tolist()
+    _get_collection().add(
         embeddings=[embedding],
         documents=[solution],
         ids=[issue]
     )
 
 def search_similar(issue):
-    embedding = model.encode(issue).tolist()
-    results = collection.query(
+    if not _vector_store_enabled():
+        return []
+
+    embedding = _get_model().encode(issue).tolist()
+    results = _get_collection().query(
         query_embeddings=[embedding],
         n_results=2
     )

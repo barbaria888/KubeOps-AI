@@ -35,6 +35,14 @@ spec:
           ports:
             - containerPort: 8000
           env:
+            - name: KUBEOPS_ENABLE_VECTOR_STORE
+              value: "false"
+            - name: KUBEOPS_MAX_ANALYZED_ISSUES
+              value: "1"
+            - name: KUBEOPS_K8SGPT_TIMEOUT_SECONDS
+              value: "120"
+            - name: OLLAMA_TIMEOUT_SECONDS
+              value: "60"
             - name: OLLAMA_URL
               value: "http://ollama:11434/api/generate"
             - name: KUBECONFIG
