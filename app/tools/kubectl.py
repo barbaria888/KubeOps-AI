@@ -7,21 +7,21 @@ def run_kubectl(command: str):
     raw_command = (command or "").strip()
 
     if not raw_command:
-        return "Error: Empty command."
+        return False, "Error: Empty command."
 
     try:
         tokens = shlex.split(raw_command)
     except ValueError as exc:
-        return f"Error: Invalid command syntax. {exc}"
+        return False, "Error: Invalid command syntax."
 
     if not tokens:
-        return "Error: Empty command."
+        return False, "Error: Empty command."
 
     if tokens[0].lower() == "kubectl":
         tokens = tokens[1:]
 
     if not tokens:
-        return "Error: Missing kubectl arguments."
+        return False, "Error: Missing kubectl arguments."
 
     cmd = ["kubectl"] + tokens
 
@@ -32,8 +32,11 @@ def run_kubectl(command: str):
             text=True,
             timeout=timeout_seconds,
         )
-        return (result.stdout or "") + (result.stderr or "")
+        if result.returncode == 0:
+            output = (result.stdout or "").strip()
+            return True, output or "Command executed successfully."
+        return False, "Error: kubectl command failed. Check backend logs for details."
     except subprocess.TimeoutExpired:
-        return f"Error: kubectl command timed out after {timeout_seconds} seconds."
+        return False, f"Error: kubectl command timed out after {timeout_seconds} seconds."
     except FileNotFoundError:
-        return "Error: kubectl binary not found in backend container."
+        return False, "Error: kubectl binary not found in backend container."

@@ -72,10 +72,10 @@ def analyze_cluster():
             except Exception:
                 pass
 
-        if not validate_action(action):
-            action = _fallback_action(description)
-
         safe = validate_action(action)
+        if not safe:
+            action = _fallback_action(description)
+            safe = validate_action(action)
 
         results.append({
             "issue": description,

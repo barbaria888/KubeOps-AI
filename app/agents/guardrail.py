@@ -7,6 +7,8 @@ def validate_action(action: str):
     blocked = ["delete", "rm", "wipe", "format"]
     unsafe_patterns = [";", "&&", "||", "|", "`", "$(", ">", "<", "\n", "\r"]
 
+    # Prevent accidental execution when the model returns an error string
+    # instead of a kubectl command.
     if lowered.startswith(("error:", "ai error:")):
         return False
 
