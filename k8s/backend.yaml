@@ -38,15 +38,21 @@ spec:
             - name: KUBEOPS_ENABLE_VECTOR_STORE
               value: "false"
             - name: KUBEOPS_LAZY_ANALYSIS
+              value: "false"
+            - name: KUBEOPS_ENABLE_FULL_OLLAMA
               value: "true"
             - name: KUBEOPS_MAX_ANALYZED_ISSUES
               value: "1"
             - name: KUBEOPS_K8SGPT_TIMEOUT_SECONDS
               value: "120"
+            - name: KUBEOPS_KUBECTL_TIMEOUT_SECONDS
+              value: "90"
             - name: OLLAMA_TIMEOUT_SECONDS
               value: "60"
             - name: OLLAMA_URL
               value: "http://ollama:11434/api/generate"
+            - name: OLLAMA_MODEL
+              value: "tinyllama:latest"
             - name: KUBECONFIG
               value: "/etc/k3s-config/k3s.yaml"
           # Auto-configures k8sgpt on startup
