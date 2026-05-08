@@ -24,10 +24,13 @@ def execute(req: CommandRequest):
     if not validate_action(req.command):
         return {"output": "❌ Command blocked by guardrail"}
 
-    result = run_kubectl(req.command)
-    
-    # Store incident memory on successful execution
-    if req.issue:
-        store_issue(req.issue, req.command)
-        
-    return {"output": result}
+    try:
+        result = run_kubectl(req.command)
+
+        # Store incident memory on successful execution
+        if req.issue:
+            store_issue(req.issue, req.command)
+
+        return {"output": result}
+    except Exception:
+        return {"output": "Error: command execution failed unexpectedly."}

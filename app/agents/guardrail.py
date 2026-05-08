@@ -23,9 +23,8 @@ def validate_action(action: str):
         return False
 
     allowed_verbs = {
-        "get", "describe", "logs", "set", "rollout", "scale", "apply",
-        "patch", "annotate", "label", "top", "cordon", "uncordon", "drain",
-        "exec", "port-forward"
+        "get", "describe", "logs", "set", "rollout", "scale",
+        "annotate", "label", "top", "cordon", "uncordon", "port-forward"
     }
 
     if tokens[0].lower() == "kubectl":
