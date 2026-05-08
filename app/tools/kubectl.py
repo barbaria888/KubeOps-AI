@@ -11,7 +11,7 @@ def run_kubectl(command: str):
 
     try:
         tokens = shlex.split(raw_command)
-    except ValueError as exc:
+    except ValueError:
         return False, "Error: Invalid command syntax."
 
     if not tokens:
