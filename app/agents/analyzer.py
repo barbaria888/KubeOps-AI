@@ -25,6 +25,11 @@ def _fallback_action(description: str) -> str:
         return "kubectl logs <pod-name> --previous"
     return "kubectl get pods -A"
 
+
+def _looks_like_ai_error(value: str) -> bool:
+    lowered = (value or "").strip().lower()
+    return lowered.startswith(("error:", "ai error:", "404 client error", "500 server error"))
+
 def analyze_cluster():
     results = []
     max_issues = int(os.getenv("KUBEOPS_MAX_ANALYZED_ISSUES", "2"))
@@ -55,17 +60,20 @@ def analyze_cluster():
         if os.getenv("KUBEOPS_ENABLE_FULL_OLLAMA", "false").lower() == "true":
             try:
                 ai_explanation = _safe_text(explain_issue(description))
-                if ai_explanation and not ai_explanation.startswith(("Error:", "AI Error:")):
+                if ai_explanation and not _looks_like_ai_error(ai_explanation):
                     explanation = ai_explanation
             except Exception:
                 pass
 
             try:
                 ai_action = _safe_text(suggest_fix(description))
-                if ai_action and not ai_action.startswith(("Error:", "AI Error:")):
+                if ai_action and not _looks_like_ai_error(ai_action):
                     action = ai_action
             except Exception:
                 pass
+
+        if not validate_action(action):
+            action = _fallback_action(description)
 
         safe = validate_action(action)
 
