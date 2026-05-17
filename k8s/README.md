@@ -33,3 +33,19 @@ kubectl exec -n k8s-ai deploy/ollama -- ollama pull gemma:2b
 ```
 
 You can then view your frontend at `http://<Node-IP>:30007`.
+
+## 📈 Observability Stack (New)
+
+The `k8s/` directory now also includes an event-driven monitoring stack:
+- **`prometheus.yaml`**: Discovers cluster faults and triggers `alert.rules`.
+- **`alertmanager.yaml`**: Routes firing alerts to the KubeOps-AI webhook listener.
+- **`grafana.yaml`**: Visualizes cluster health with pre-provisioned dashboards.
+- **`antigravity-listener.yaml`**: The bridge that catches Alertmanager webhooks and triggers the AI backend.
+
+Deploy the observability suite:
+```bash
+kubectl apply -f prometheus.yaml
+kubectl apply -f alertmanager.yaml
+kubectl apply -f grafana.yaml
+kubectl apply -f antigravity-listener.yaml
+```

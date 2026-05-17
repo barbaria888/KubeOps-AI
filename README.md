@@ -103,3 +103,14 @@ kubectl apply -f k8s/
 
 ## 📝 License
 MIT License
+
+---
+
+## 📈 Event-Driven Observability (New)
+
+The project now includes a fully integrated event-driven monitoring stack using **Prometheus**, **Alertmanager**, and **Grafana**. 
+- Prometheus discovers cluster faults and fires alerts.
+- The new `antigravity_listener.py` webhook bridge automatically intercepts these alerts and routes them directly to KubeOps-AI for instant, autonomous remediation.
+- Grafana is pre-provisioned with full Kubernetes cluster dashboards.
+
+Check out the `k8s/` folder to deploy the observability suite!

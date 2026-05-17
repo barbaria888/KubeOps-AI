@@ -34,3 +34,7 @@ pip install -r ../requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 *(The backend expects Ollama to be running on `http://localhost:11434` and `kubectl / k8sgpt` to be installed on your host).*
+
+## 🔌 Event-Driven Webhooks (New)
+
+The backend now exposes an endpoint at `/api/webhook/alert` designed to receive event-driven payloads from the new **Prometheus -> Alertmanager -> Antigravity Listener** pipeline. This means the backend no longer has to blindly poll the cluster; it is instantly notified when a fault (like `CrashLoopBackOff`) occurs.

@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: k8s-ai
+data:
+  prometheus.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus-svc.k8s-ai.svc.cluster.local:9090
+        isDefault: true
+        editable: false
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: k8s-ai
+data:
+  provider.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: k8s-ai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      initContainers:
+        - name: download-dashboard
+          image: curlimages/curl:latest
+          command:
+            - "sh"
+            - "-c"
+            - >
+              curl -sL https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-global.json -o /var/lib/grafana/dashboards/k8s-global.json &&
+              curl -sL https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-namespaces.json -o /var/lib/grafana/dashboards/k8s-namespaces.json &&
+              curl -sL https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-pods.json -o /var/lib/grafana/dashboards/k8s-pods.json
+          volumeMounts:
+            - name: dashboards-volume
+              mountPath: /var/lib/grafana/dashboards
+      containers:
+        - name: grafana
+          image: grafana/grafana:10.0.3
+          ports:
+            - containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: "admin"
+            - name: GF_SECURITY_ADMIN_USER
+              value: "admin"
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "true"
+          volumeMounts:
+            - name: datasources-volume
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboard-provider-volume
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards-volume
+              mountPath: /var/lib/grafana/dashboards
+            - name: storage-volume
+              mountPath: /var/lib/grafana
+      volumes:
+        - name: datasources-volume
+          configMap:
+            name: grafana-datasources
+        - name: dashboard-provider-volume
+          configMap:
+            name: grafana-dashboard-provider
+        - name: dashboards-volume
+          emptyDir: {}
+        - name: storage-volume
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-svc
+  namespace: k8s-ai
+spec:
+  selector:
+    app: grafana
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
+  type: ClusterIP

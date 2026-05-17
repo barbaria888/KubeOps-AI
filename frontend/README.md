@@ -30,3 +30,7 @@ npm run dev
 ```
 
 Your app will be available at `http://localhost:5173`.
+
+## ⚡ Event-Driven UI (New)
+
+The dashboard is now part of a closed-loop event system. As Prometheus detects cluster faults and fires alerts through Alertmanager, the backend processes them and immediately surfaces the newly diagnosed issues onto the UI for approval, removing the need for manual discovery!

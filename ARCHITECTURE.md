@@ -109,3 +109,24 @@ Once deployed:
 - Nginx routes `/api` traffic internally to the **Backend Service** on port 8000.
 - The Backend Service talks to the **Ollama Service** internally on port 11434 to generate insights.
 - The Backend uses its mounted `kubeconfig` to talk to the **Kubernetes API Server** directly to fetch issues and apply fixes.
+
+---
+
+## 📈 The Observability Stack (New)
+
+The system has evolved from a simple "Polling" architecture to a fully **Event-Driven Loop** with the addition of the observability stack in the `k8s/` directory.
+
+### Components
+1. **Prometheus**: Scrapes metrics from the cluster and evaluates `alert.rules` (e.g., detecting `PodCrashLooping`).
+2. **Grafana**: Provides a visual dashboard of the cluster metrics, auto-provisioned to work immediately.
+3. **Alertmanager**: Routes firing alerts from Prometheus to our custom webhook bridge.
+4. **Antigravity Listener**: A Python FastAPI webhook receiver (`antigravity-listener.yaml`).
+
+### The Event Flow
+When Prometheus detects a failure, instead of an admin manually triggering a scan, the flow is completely autonomous:
+1. Prometheus -> Alertmanager (Alert payload)
+2. Alertmanager -> Antigravity Listener (`POST /webhook/alertmanager`)
+3. Listener parses the exact `namespace` and `pod` affected.
+4. Listener triggers the KubeOps-AI Backend (`POST /api/webhook/alert`) with exponential backoff.
+5. The Backend runs its `k8sgpt` and `Ollama` reasoning loop specifically on that failing pod.
+6. The exact fix appears instantly on the React Dashboard for admin approval.

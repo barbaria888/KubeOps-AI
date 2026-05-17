@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: antigravity-listener
+  namespace: k8s-ai
+  labels:
+    app: antigravity-listener
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: antigravity-listener
+  template:
+    metadata:
+      labels:
+        app: antigravity-listener
+    spec:
+      containers:
+        - name: listener
+          image: python:3.11-slim
+          command: ["/bin/sh", "-c"]
+          # Installs dependencies on the fly and runs the listener script.
+          # In a production environment, you should bake this into a Docker image.
+          args:
+            - pip install fastapi uvicorn httpx && uvicorn antigravity_listener:app --host 0.0.0.0 --port 8080
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: listener-script
+              mountPath: /app/antigravity_listener.py
+              subPath: antigravity_listener.py
+          workingDir: /app
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+      volumes:
+        - name: listener-script
+          configMap:
+            name: antigravity-listener-code
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: antigravity-listener-code
+  namespace: k8s-ai
+# The data payload will be injected via `kubectl create configmap` or filled in here 
+# if managing directly through GitOps.
+data:
+  antigravity_listener.py: |
+    import logging
+    import asyncio
+    from fastapi import FastAPI, BackgroundTasks, Request, Response
+    import httpx
+
+    app = FastAPI(title="Antigravity Alertmanager Listener")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    logger = logging.getLogger("antigravity-listener")
+
+    DOWNSTREAM_URL = "http://backend.k8s-ai.svc.cluster.local:8000/api/webhook/alert"
+
+    async def process_alerts(payload: dict):
+        alerts = payload.get("alerts", [])
+        
+        for alert in alerts:
+            status = alert.get("status")
+            if status != "firing":
+                continue
+                
+            labels = alert.get("labels", {})
+            alertname = labels.get("alertname", "UnknownAlert")
+            namespace = labels.get("namespace", "default")
+            pod = labels.get("pod") or labels.get("resource_name") or "unknown_resource"
+            
+            logger.info(f"Trace [START]: Alert '{alertname}' FIRING in namespace '{namespace}'. Affected resource: {pod}")
+            
+            forward_payload = {
+                "status": status,
+                "alertname": alertname,
+                "namespace": namespace,
+                "pod": pod,
+                "original_labels": labels
+            }
+            
+            max_retries = 3
+            base_delay = 2
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    async with httpx.AsyncClient() as client:
+                        response = await client.post(
+                            DOWNSTREAM_URL,
+                            json=forward_payload,
+                            headers={"Content-Type": "application/json"},
+                            timeout=10.0
+                        )
+                        response.raise_for_status()
+                        logger.info(f"Trace [SUCCESS]: Successfully forwarded alert '{alertname}' to KubeOps-AI.")
+                        break
+                        
+                except httpx.HTTPError as e:
+                    if attempt < max_retries:
+                        delay = base_delay * (2 ** attempt)
+                        logger.warning(f"Trace [RETRY]: Downstream API unavailable. Retrying in {delay}s... (Attempt {attempt + 1}/{max_retries}). Error: {e}")
+                        await asyncio.sleep(delay)
+                    else:
+                        logger.error(f"Trace [FAILED]: Exhausted all retries for '{alertname}'. Error: {e}")
+
+    @app.post("/webhook/alertmanager")
+    async def alertmanager_webhook(request: Request, background_tasks: BackgroundTasks):
+        try:
+            payload = await request.json()
+        except Exception as e:
+            return Response(status_code=400, content="Invalid JSON")
+            
+        background_tasks.add_task(process_alerts, payload)
+        return {"status": "accepted", "message": "Alert processing initiated"}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: antigravity-listener-svc
+  namespace: k8s-ai
+spec:
+  selector:
+    app: antigravity-listener
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
