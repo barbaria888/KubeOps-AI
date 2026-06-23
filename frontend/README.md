@@ -1,23 +1,33 @@
 # 🎨 React AI Dashboard (Frontend)
 
-This directory contains the user interface for the K8s Agentic AI pipeline. Built with **Vite** and **React Native**, it provides a clean, single-pane-of-glass view into your cluster's health and the AI's deductions.
+This directory contains the user interface for the K8s Agentic AI pipeline. Built with **Vite** and **React**, it provides a clean, single-pane-of-glass view into your cluster's health and the AI's deductions.
 
 ## 🧩 Components Overview
 
-- **`App.jsx`**: The main container that fetches issues from the Backend immediately upon loading.
-- **`IssueCard.jsx`**: A streamlined card displaying the exact Kubernetes fault, the AI's plain-English explanation, and the suggested `kubectl` fix.
-- **`ActionButton.jsx`**: The critical "Approve & Run" interface. 
-- **`api.js`**: Axios wrappers connecting to the backend's `/analyze` and `/execute` endpoints.
+- **`App.jsx`**: The main container that fetches issues from the Backend. It implements the automated **Remediation Verification Loop**:
+  - Sets an interval every 5 seconds (up to 12 attempts) upon execution success.
+  - Compares subsequent fetched issues to the resolved issue text.
+  - Automatically updates the UI status and clears the interval when the issue is resolved or max attempts are reached.
+  - Provides a **manual Refresh button** and displays a **Last refreshed** timestamp in the header.
+  - Displays a **Verifying badge** with an animated pulsing dot and count (`Verifying fix… poll N/12`).
+- **`components/IssueCard.jsx`**: Displays the exact Kubernetes fault, the AI's explanation, and the suggested `kubectl` fix. Forwards the `onExecuteSuccess` callback to the ActionButton.
+- **`components/ActionButton.jsx`**: The "Approve & Run" interface. 
+  - Triggers the `onExecuteSuccess(issueText)` callback immediately upon successful execution.
+  - Replaces blocking `window.alert()` dialogs with an **inline result panel** containing:
+    - A `✅ Executed` status badge.
+    - A scrollable terminal code block with raw `kubectl` command execution output.
+    - A `🔄 Verifying fix — dashboard will update automatically…` helper message.
+- **`api.js`**: Axios wrappers connecting to the backend endpoints, including the new `/webhook/results` polling helper (`fetchWebhookResults()`).
+- **`index.css`**: Scorpio-themed styling, featuring styling for the new `.verifying-badge`, `.pulse-dot`, `.btn-refresh`, and inline `.execution-result` panels.
 
-## 🛡️ "Approve & Run" Safety System
+## 🛡️ "Approve & Run" Safety & Verification Loop
 
-The dashboard is designed for **Human-in-the-Loop** (HITL) autonomy. 
-The AI will *never* execute a command on its own. 
+The dashboard is designed for **Human-in-the-Loop** (HITL) autonomy:
 
-1. When the backend's guardrail marks a command as **Unsafe** (e.g. `delete pod`), the button will be **greyed out and disabled**.
-2. When marked **Safe**, the button will turn **Green**.
-3. Clicking "Approve & Run" triggers a browser confirmation prompt so administrators can double-check the raw `kubectl` command before it strikes the cluster.
-4. Upon successful execution, the issue metric is silently passed back to the backend to be indexed into the incident memory vector database!
+1. **Guardrails**: When the backend's guardrail marks a command as **Unsafe** (e.g. `delete pod`), the execution button is disabled.
+2. **Approval**: When marked **Safe**, the button glows green, requiring explicit administrator approval to trigger execution.
+3. **Execution & Inline Feedback**: Clicking the button runs the command and prints the output inline in the card (no intrusive browser alert dialogs).
+4. **Autonomous Verification**: Upon execution, the frontend starts a polling verification loop to automatically check the cluster state. It monitors the dashboard issues list and transitions the UI back to a clean state once the issue disappears from the backend scans.
 
 ## 🚀 Running Locally
 
@@ -30,7 +40,3 @@ npm run dev
 ```
 
 Your app will be available at `http://localhost:5173`.
-
-## ⚡ Event-Driven UI (New)
-
-The dashboard is now part of a closed-loop event system. As Prometheus detects cluster faults and fires alerts through Alertmanager, the backend processes them and immediately surfaces the newly diagnosed issues onto the UI for approval, removing the need for manual discovery!

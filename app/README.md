@@ -20,7 +20,7 @@ app/
 
 ## 🔄 How the Pipeline Works
 
-1. **Discovery `GET /analyze`**: The backend triggers `k8sgpt analyze`. For every issue found, it passes the text to the **Reasoning Agent**.
+1. **Discovery (`GET /analyze` or Webhook `POST /webhook/alert`)**: The backend triggers `k8sgpt analyze`. Webhook alerts trigger a targeted namespace analysis (`--namespace <ns>`) via a FastAPI `BackgroundTask` to bypass global scanning. For every issue found, the text is sent to the **Reasoning Agent**.
 2. **Context Retrieval**: The Reasoning Agent queries **ChromaDB** for similar historic incidents.
 3. **LLM Generation**: Ollama (`gemma:2b`) is prompted with the issue + historic context to generate an explanation and a suggested fix.
 4. **Validation**: The **Guardrail Agent** scans the suggested `kubectl` command. If it contains words like `delete`, `rm`, or `wipe`, it marks `safe: false`.
@@ -30,11 +30,29 @@ app/
 
 Create a virtual environment and start the server:
 ```bash
+python -m venv venv
+source venv/bin/activate
 pip install -r ../requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 *(The backend expects Ollama to be running on `http://localhost:11434` and `kubectl / k8sgpt` to be installed on your host).*
 
-## 🔌 Event-Driven Webhooks (New)
+## 🔌 API Endpoints & Event-Driven Webhooks
 
-The backend now exposes an endpoint at `/api/webhook/alert` designed to receive event-driven payloads from the new **Prometheus -> Alertmanager -> Antigravity Listener** pipeline. This means the backend no longer has to blindly poll the cluster; it is instantly notified when a fault (like `CrashLoopBackOff`) occurs.
+The backend exposes the following endpoint routes:
+
+| Route | Method | Description |
+|---|---|---|
+| `/` | `GET` | Home greeting endpoint. |
+| `/health` | `GET` | Liveness/readiness check probe. |
+| `/analyze` | `GET` | Runs a cluster-wide analysis. |
+| `/execute` | `POST` | Validates and runs safe `kubectl` actions, then indexes them in Vector Memory. |
+| `/webhook/alert` | `POST` | Intercepts alerts from the **Antigravity Listener**. Enqueues a `BackgroundTask` to analyze the specific `namespace` of the alert. |
+| `/webhook/results` | `GET` | Returns cached results of webhook-triggered analyses for polling by the dashboard. |
+
+### Webhook Flow Detail
+1. `POST /webhook/alert` receives an `AlertPayload` (`status`, `alertname`, `namespace`, `pod`, etc.).
+2. If `status == "firing"`, a FastAPI `BackgroundTask` is spawned to execute `analyze_cluster(namespace=...)`.
+3. The resulting diagnosis is stored in an in-memory dictionary cache (`_webhook_results`) keyed by `(namespace, pod)`.
+4. When `status == "resolved"`, the cache entry is immediately popped and cleared.
+5. The React dashboard retrieves these results dynamically by calling `GET /webhook/results`.

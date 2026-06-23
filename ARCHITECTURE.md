@@ -18,7 +18,10 @@ Instead of an administrator manually hunting down failing pods or reading crypti
 ---
 ## 🔄 End-to-End System Flow
 
-The following Mermaid diagram illustrates how the components interact when a user opens the dashboard and runs a fix.
+The following sequence diagrams illustrate the two primary workflows: **Manual Analysis & Execution** and **Event-Driven Webhook Processing**.
+
+### 1. Manual Analysis & Execution Flow
+This flow represents the standard user interaction when opening the dashboard, viewing detected cluster faults, and executing/verifying a suggested fix.
 
 ```mermaid
 sequenceDiagram
@@ -32,7 +35,7 @@ sequenceDiagram
     %% Flow: Fetching Issues
     User->>Frontend: Open Dashboard
     Frontend->>Backend: GET /api/analyze
-    Backend->>Tools: Run `k8sgpt analyze`
+    Backend->>Tools: Run `k8sgpt analyze` (cluster-wide)
     Tools-->>Backend: Return Raw Cluster Issues
     
     %% Flow: AI Reasoning
@@ -45,15 +48,62 @@ sequenceDiagram
     Backend->>Backend: Guardrail Check (Safe / Unsafe)
     Backend-->>Frontend: Return Analyzed Issues (JSON)
     Frontend-->>User: Display Scorpio-themed Dashboard
+```
 
-    %% Flow: Execution
-    User->>Frontend: Click "Approve & Run"
-    Frontend->>Backend: POST /api/execute {command}
-    Backend->>Tools: Run `kubectl <command>`
-    Tools-->>Backend: Execution Results
-    Backend->>DB: Save (Issue + Fix) to Memory
-    Backend-->>Frontend: Return Success Status
-    Frontend-->>User: Display Output Alert
+### 2. Event-Driven Webhook Alert Flow
+This flow describes the autonomous pipeline triggered when a Kubernetes resource enters a failure state, alerting the system without human intervention.
+
+```mermaid
+sequenceDiagram
+    participant Cluster as K8s Cluster Pod
+    participant Prom as Prometheus
+    participant AM as Alertmanager
+    participant AL as Antigravity Listener
+    participant Backend as FastAPI Core
+    participant Tools as K8sGPT (Targeted)
+
+    %% Flow: Alert Triggering
+    Cluster->>Prom: Enters crash / failure state
+    Prom->>AM: Fire Alert (alertname, namespace, pod)
+    AM->>AL: Forward Webhook payload
+    AL->>Backend: POST /webhook/alert {status: firing, namespace, pod}
+    
+    %% Flow: Async Target Analysis
+    Note over Backend: Spawns FastAPI BackgroundTask
+    Backend-->>AL: HTTP 200 (Accepted)
+    Backend->>Tools: Run `k8sgpt analyze --namespace <ns>`
+    Tools-->>Backend: Return targeted namespace issues
+    Note over Backend: Cache in-memory (_webhook_results)
+```
+
+### 3. Execution & Verification Loop Flow
+After clicking "Approve & Run", the frontend replaces traditional blocking window alerts with an inline panel and launches a verification loop to confirm the fix succeeded.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI as React UI (App.jsx)
+    participant Backend as FastAPI Core
+    participant Tool as Kubectl
+
+    User->>UI: Click "Approve & Run"
+    UI->>Backend: POST /api/execute {command, issue}
+    Backend->>Tool: Run `kubectl <command>`
+    Tool-->>Backend: Command Execution Output
+    Backend-->>UI: Return raw terminal output
+    Note over UI: Display Inline Output Panel & Start Verification Loop
+    
+    Loop Every 5s (Up to 12 attempts / 60s)
+        UI->>Backend: GET /api/analyze (Fetch current issues)
+        Backend-->>UI: Active issues list
+        alt Issue no longer present in issues list
+            Note over UI: Clear verification loop interval
+            Note over UI: Re-enable UI with green success state
+        else Max attempts reached
+            Note over UI: Clear verification loop interval
+            Note over UI: Show timeout warning (Manual verification required)
+        end
+    end
 ```
 
 ---
@@ -71,6 +121,13 @@ Because the React app runs in the user's browser, it cannot directly resolve int
 - Nginx is configured as a **Reverse Proxy**. 
 - The React app makes requests to `/api`, and Nginx intercepts these and securely forwards them to the internal FastAPI backend service.
 
+### Remediation Verification Loop
+When a user approves a fix, the frontend initiates a verification sequence:
+- The Action Button changes state to show verification is in progress (`Verifying fix… poll N/12`).
+- A background `setInterval` polls the backend every 5 seconds to query active issues.
+- If the issue is resolved and disappears from the issues list, the loop terminates and the dashboard refreshes automatically.
+- Includes a manual **Refresh button** in the header along with a **Last refreshed** timestamp.
+
 ---
 
 ## 🧠 The Backend Approach
@@ -79,14 +136,20 @@ The backend is built with **FastAPI** (Python) and acts as the "Intelligence Cor
 
 ### Directory Structure & Roles
 - **Agents (`app/agents/`)**: 
-  - `analyzer.py`: Parses the raw JSON output from K8sGPT.
+  - `analyzer.py`: Parses the raw JSON output from K8sGPT. Now accepts a `namespace` parameter to restrict analysis.
   - `reasoning.py`: Asks Ollama to explain the issue, injecting historic context from the Vector Store to improve accuracy.
   - `action.py`: Generates the actionable `kubectl` command.
   - `guardrail.py`: Blocks destructive commands. If the AI suggests `delete`, `rm`, or `wipe`, the guardrail marks it as `safe: false`.
-- **Tools (`app/tools/`)**: Subprocess runners for `k8sgpt`, `kubectl`, `ollama`, and `vector_store.py` (ChromaDB).
+- **Tools (`app/tools/`)**: Subprocess runners for `k8sgpt` (supports `--namespace`), `kubectl`, `ollama`, and `vector_store.py` (ChromaDB).
 
 > [!IMPORTANT]
 > **Incident Memory**: Every time a user successfully runs an action via the dashboard, the backend saves the `(Issue -> Successful Command)` pairing into ChromaDB. The next time a similar issue occurs, the Reasoning agent fetches this memory and feeds it to the LLM, effectively allowing the system to **learn** from past outages.
+
+### Webhook API & Background Processing
+To avoid blocking Alertmanager timeouts, the backend implements asynchronous background jobs:
+- `POST /webhook/alert`: Receives alert payloads from the Antigravity Listener. If the status is `firing`, it queues a FastAPI `BackgroundTask` to analyze only the affected namespace. If the status is `resolved`, the cached result is popped and removed from memory.
+- `GET /webhook/results`: Serves cached analysis results to the frontend dashboard.
+- `GET /health`: Liveness/readiness check route.
 
 ---
 
@@ -98,34 +161,18 @@ The entire architecture is "Cloud-Native Ready" and designed to be deployed dire
 1. **Namespace (`namespace.yaml`)**: Creates a dedicated `k8s-ai` sandbox to keep our tools organized and secure.
 2. **Ollama (`ollama.yaml`)**: Deploys the LLM runner. By keeping the LLM strictly within the cluster, sensitive infrastructure logs are **never** sent to public APIs like OpenAI. 
 3. **Backend (`backend.yaml`)**: Deploys the FastAPI intelligence core. 
-    > [!WARNING]
-    > To allow the backend pod to execute `kubectl` commands against its host cluster, the deployment explicitly mounts the host node's kubeconfig (e.g., `/etc/rancher/k3s/k3s.yaml` for K3s). A `ClusterRoleBinding` is also used to grant the default ServiceAccount admin permissions.
+    - **Incident Memory**: Enabled by default with environment variable `KUBEOPS_ENABLE_VECTOR_STORE: "true"`.
+    - **Host Access**: To allow the backend pod to execute `kubectl` commands against its host cluster, the deployment explicitly mounts the host node's kubeconfig (e.g., `/etc/rancher/k3s/k3s.yaml` for K3s). A `ClusterRoleBinding` is also used to grant the default ServiceAccount admin permissions.
 4. **Frontend (`frontend.yaml`)**: Deploys the Nginx container serving the React UI. It uses a `NodePort` (30007) to expose the beautiful dashboard to the outside world.
-
-### Connecting it all together
-Once deployed:
-- The **Frontend Pod** receives internet traffic on port 30007.
-- Nginx routes `/api` traffic internally to the **Backend Service** on port 8000.
-- The Backend Service talks to the **Ollama Service** internally on port 11434 to generate insights.
-- The Backend uses its mounted `kubeconfig` to talk to the **Kubernetes API Server** directly to fetch issues and apply fixes.
 
 ---
 
-## 📈 The Observability Stack (New)
+## 📈 The Observability Stack
 
-The system has evolved from a simple "Polling" architecture to a fully **Event-Driven Loop** with the addition of the observability stack in the `k8s/` directory.
+The system has evolved from a simple "Polling" architecture to a fully **Event-Driven Loop** with the addition of the observability stack.
 
 ### Components
-1. **Prometheus**: Scrapes metrics from the cluster and evaluates `alert.rules` (e.g., detecting `PodCrashLooping`).
-2. **Grafana**: Provides a visual dashboard of the cluster metrics, auto-provisioned to work immediately.
-3. **Alertmanager**: Routes firing alerts from Prometheus to our custom webhook bridge.
-4. **Antigravity Listener**: A Python FastAPI webhook receiver (`antigravity-listener.yaml`).
-
-### The Event Flow
-When Prometheus detects a failure, instead of an admin manually triggering a scan, the flow is completely autonomous:
-1. Prometheus -> Alertmanager (Alert payload)
-2. Alertmanager -> Antigravity Listener (`POST /webhook/alertmanager`)
-3. Listener parses the exact `namespace` and `pod` affected.
-4. Listener triggers the KubeOps-AI Backend (`POST /api/webhook/alert`) with exponential backoff.
-5. The Backend runs its `k8sgpt` and `Ollama` reasoning loop specifically on that failing pod.
-6. The exact fix appears instantly on the React Dashboard for admin approval.
+1. **Prometheus** (NodePort `32001`): Scrapes metrics from the cluster and evaluates `alert.rules` (e.g., detecting `PodCrashLooping`).
+2. **Alertmanager** (NodePort `32002`): Routes firing alerts from Prometheus to our custom webhook bridge.
+3. **Grafana** (NodePort `32000`): Visualizes cluster health with pre-provisioned dashboards (Default credentials: `admin` / `admin`).
+4. **Antigravity Listener**: A Python FastAPI webhook receiver (`antigravity-listener.yaml`) that routes alerts from Alertmanager to KubeOps-AI backend webhook endpoints.

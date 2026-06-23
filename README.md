@@ -85,32 +85,74 @@
 
   ## 🐳 Kubernetes Deployment
 
-  To deploy this entire stack into your Kubernetes cluster, head over to the `k8s/` folder.
+To deploy this entire stack into your Kubernetes cluster, head over to the `k8s/` folder.
 
-  ```bash
+```bash
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/ollama.yaml
+kubectl apply -f k8s/backend.yaml
+kubectl apply -f k8s/frontend.yaml
+# or simply
+kubectl apply -f k8s/
+```
 
-  kubectl apply -f k8s/namespace.yaml
-  kubectl apply -f k8s/ollama.yaml
-  kubectl apply -f k8s/backend.yaml
-  kubectl apply -f k8s/frontend.yaml
-  # or simply
-  kubectl apply -f k8s/
-  ```
+*Note: Our backend deployment expects access to Kubeconfig. By default, it maps `/etc/rancher/k3s/k3s.yaml` for K3s clusters.*
 
-  *Note: Our backend deployment expects access to Kubeconfig. By default, it maps `/etc/rancher/k3s/k3s.yaml` for K3s clusters.*
+### 🌐 Access Points
+Once deployed, core services are exposed via NodePorts for direct access without port-forwarding:
 
-  ---
+| Service | Access URL | Credentials |
+|---|---|---|
+| **KubeOps-AI Dashboard** | `http://<NODE_IP>:30007` | _None_ |
+| **Grafana** | `http://<NODE_IP>:32000` | `admin` / `admin` |
+| **Prometheus** | `http://<NODE_IP>:32001` | _None_ |
+| **Alertmanager** | `http://<NODE_IP>:32002` | _None_ |
 
-  ## 📝 License
-  MIT License
+### 🎭 Platform Demo Scenarios
+An interactive bash script `demo_setup.sh` is provided to demonstrate the core features of the platform:
 
-  ---
+| Scenario | Feature Tested | Action flow |
+|---|---|---|
+| **1** | AI Pipeline & Approve/Run | Deploys invalid `nginx:baddytag` image &rarr; pod enters `ImagePullBackOff` &rarr; AI analyzes and proposes fix &rarr; User executes fix via Dashboard. |
+| **2** | Guardrail Protection | Attempts to execute `kubectl delete namespace k8s-ai` via API &rarr; intercepted and blocked by backend guardrails. |
+| **3** | Incident Vector Memory | Seeds ChromaDB with historical incidents &rarr; deploys replica broken pod &rarr; AI references memory and highlights past solution. |
+| **4** | Event-Driven Alert Loop | Deploys a crash-looping pod &rarr; Prometheus triggers alert &rarr; Webhook propagates to backend &rarr; Dashboards update with live alerts. |
 
-  ## 📈 Event-Driven Observability (New)
+Execute the demo:
+```bash
+chmod +x demo_setup.sh
+./demo_setup.sh <NODE_IP>
+```
 
-  The project now includes a fully integrated event-driven monitoring stack using **Prometheus**, **Alertmanager**, and **Grafana**. 
-  - Prometheus discovers cluster faults and fires alerts.
-  - The new `antigravity_listener.py` webhook bridge automatically intercepts these alerts and routes them directly to KubeOps-AI for instant, autonomous remediation.
-  - Grafana is pre-provisioned with full Kubernetes cluster dashboards.
+### ⚙️ Rebuilding & Redeploying
+To build your own container images and rollout updates into the cluster:
 
-  Check out the `k8s/` folder to deploy the observability suite!
+```bash
+# 1. Rebuild and deploy Backend
+docker build -t hardik0811/kubeops-ai-backend:latest .
+docker push hardik0811/kubeops-ai-backend:latest
+kubectl rollout restart deployment/backend -n k8s-ai
+
+# 2. Rebuild and deploy Frontend
+cd frontend
+npm run build
+docker build -t hardik0811/kubeops-ai-frontend:latest .
+docker push hardik0811/kubeops-ai-frontend:latest
+kubectl rollout restart deployment/frontend -n k8s-ai
+```
+
+---
+
+## 📝 License
+MIT License
+
+---
+
+## 📈 Event-Driven Observability
+
+The project includes an event-driven monitoring stack using **Prometheus**, **Alertmanager**, and **Grafana** integrated with the KubeOps-AI pipeline. 
+- Prometheus discovers cluster faults and triggers alerts.
+- The webhook listener intercepts alerts and posts them to `POST /webhook/alert`.
+- Firing alerts initiate a FastAPI `BackgroundTask` to invoke a targeted `k8sgpt` analysis using `--namespace <ns>` to avoid false positives and speed up execution.
+- Webhook results are cached in-memory and exposed via `GET /webhook/results` for React dashboard polling.
+- Once an alert resolves (`status == "resolved"`), it is automatically cleared from the active memory cache.
