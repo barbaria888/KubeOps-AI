@@ -36,7 +36,7 @@ spec:
             - containerPort: 8000
           env:
             - name: KUBEOPS_ENABLE_VECTOR_STORE
-              value: "false"
+              value: "true"
             - name: KUBEOPS_LAZY_ANALYSIS
               value: "false"
             - name: KUBEOPS_ENABLE_FULL_OLLAMA

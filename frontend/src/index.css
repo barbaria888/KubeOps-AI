@@ -259,3 +259,103 @@ body {
   border: 1px dashed var(--border-color);
   color: var(--text-muted);
 }
+
+/* ── Dashboard meta bar ───────────────────────────────────────────────── */
+.dashboard-meta {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.verifying-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  color: var(--accent-cyan);
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  animation: fadeIn 0.4s ease;
+}
+
+.pulse-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  animation: pulseDot 1.2s ease-in-out infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.7); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Refresh button ───────────────────────────────────────────────────── */
+.btn-refresh {
+  margin-top: 14px;
+  background: rgba(138, 43, 226, 0.08);
+  color: var(--accent-purple);
+  border: 1px solid rgba(138, 43, 226, 0.35);
+  font-size: 0.8rem;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+}
+.btn-refresh:hover {
+  background: var(--accent-purple);
+  color: #fff;
+}
+
+/* ── Inline execution result panel ───────────────────────────────────── */
+.execution-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: fadeIn 0.3s ease;
+}
+
+.execution-badge {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--success-color);
+  letter-spacing: 0.5px;
+}
+
+.execution-output {
+  font-family: 'Fira Code', 'Courier New', Courier, monospace;
+  font-size: 0.78rem;
+  background: rgba(0, 230, 118, 0.05);
+  border: 1px solid rgba(0, 230, 118, 0.2);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--success-color);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.verifying-text {
+  font-size: 0.78rem;
+  color: var(--accent-cyan);
+  opacity: 0.8;
+  animation: pulseDot 2s ease-in-out infinite;
+}
+

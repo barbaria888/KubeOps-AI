@@ -1,6 +1,6 @@
 import ActionButton from "./ActionButton";
 
-export default function IssueCard({ data }) {
+export default function IssueCard({ data, onExecuteSuccess }) {
   return (
     <div className="issue-card">
       <div className="issue-header">
@@ -26,7 +26,12 @@ export default function IssueCard({ data }) {
       </div>
 
       <div className="card-actions">
-        <ActionButton command={data.suggested_action} safe={data.safe} issue={data.issue} />
+        <ActionButton
+          command={data.suggested_action}
+          safe={data.safe}
+          issue={data.issue}
+          onExecuteSuccess={onExecuteSuccess}
+        />
       </div>
     </div>
   );

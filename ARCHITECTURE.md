@@ -16,7 +16,6 @@ Instead of an administrator manually hunting down failing pods or reading crypti
 5. Provides a beautiful, web-based UI where an admin can safely **Approve & Run** the remediation with one click.
 
 ---
-
 ## 🔄 End-to-End System Flow
 
 The following Mermaid diagram illustrates how the components interact when a user opens the dashboard and runs a fix.

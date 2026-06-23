@@ -30,7 +30,14 @@ def _looks_like_ai_error(value: str) -> bool:
     lowered = (value or "").strip().lower()
     return lowered.startswith(("error:", "ai error:", "404 client error", "500 server error"))
 
-def analyze_cluster():
+
+def analyze_cluster(namespace: str = None):
+    """Run the full agentic analysis pipeline.
+
+    Args:
+        namespace: When provided the analysis is scoped to this single
+                   Kubernetes namespace (populated by the Prometheus webhook route).
+    """
     results = []
     max_issues = int(os.getenv("KUBEOPS_MAX_ANALYZED_ISSUES", "2"))
     lazy_mode = os.getenv("KUBEOPS_LAZY_ANALYSIS", "true").lower() == "true"
@@ -38,12 +45,15 @@ def analyze_cluster():
     if lazy_mode:
         return [{
             "issue": "Cluster analysis is warming up",
-            "explanation": "Lazy analysis is enabled, so the backend returns immediately while Ollama and K8sGPT are still starting.",
+            "explanation": (
+                "Lazy analysis is enabled, so the backend returns immediately "
+                "while Ollama and K8sGPT are still starting."
+            ),
             "suggested_action": "kubectl get pods -A",
             "safe": True,
         }]
 
-    issues = run_k8sgpt()
+    issues = run_k8sgpt(namespace=namespace)
 
     if not isinstance(issues, dict):
         issues = {"results": []}
