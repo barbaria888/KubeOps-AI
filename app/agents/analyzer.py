@@ -74,7 +74,11 @@ def analyze_cluster(namespace: str = None):
     if not isinstance(issues, dict):
         issues = {"results": []}
 
-    for issue in issues.get("results", [])[:max_issues]:
+    results_list = issues.get("results")
+    if results_list is None:
+        results_list = []
+
+    for issue in results_list[:max_issues]:
         if not isinstance(issue, dict):
             issue = {"description": issue}
 
