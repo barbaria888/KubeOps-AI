@@ -4,3 +4,4 @@ pydantic
 requests
 chromadb
 sentence-transformers
+openai>=1.0.0

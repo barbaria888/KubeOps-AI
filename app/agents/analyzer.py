@@ -31,6 +31,22 @@ def _looks_like_ai_error(value: str) -> bool:
     return lowered.startswith(("error:", "ai error:", "404 client error", "500 server error"))
 
 
+def _is_full_ai_enabled() -> bool:
+    """Return True when the full LLM reasoning pipeline should run.
+
+    Supports both the new canonical env var (KUBEOPS_ENABLE_FULL_AI) and the
+    legacy name (KUBEOPS_ENABLE_FULL_OLLAMA) so existing deployments continue
+    to work without any manifest changes.
+    """
+    # New canonical name takes precedence
+    new_var = os.getenv("KUBEOPS_ENABLE_FULL_AI", "").lower()
+    if new_var:
+        return new_var == "true"
+    # Legacy backward-compatible alias
+    legacy_var = os.getenv("KUBEOPS_ENABLE_FULL_OLLAMA", "false").lower()
+    return legacy_var == "true"
+
+
 def analyze_cluster(namespace: str = None):
     """Run the full agentic analysis pipeline.
 
@@ -47,7 +63,7 @@ def analyze_cluster(namespace: str = None):
             "issue": "Cluster analysis is warming up",
             "explanation": (
                 "Lazy analysis is enabled, so the backend returns immediately "
-                "while Ollama and K8sGPT are still starting."
+                "while the LLM and K8sGPT are still starting."
             ),
             "suggested_action": "kubectl get pods -A",
             "safe": True,
@@ -67,7 +83,7 @@ def analyze_cluster(namespace: str = None):
         explanation = _fallback_explanation(description)
         action = _fallback_action(description)
 
-        if os.getenv("KUBEOPS_ENABLE_FULL_OLLAMA", "false").lower() == "true":
+        if _is_full_ai_enabled():
             try:
                 ai_explanation = _safe_text(explain_issue(description))
                 if ai_explanation and not _looks_like_ai_error(ai_explanation):

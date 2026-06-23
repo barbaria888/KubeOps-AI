@@ -30,16 +30,17 @@ spec:
       containers:
         - name: backend
           image: hardik0811/kubeops-ai-backend:latest
-          # ADDED: Explicit command to increase the internal API timeout
           command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "500"]
           ports:
             - containerPort: 8000
           env:
+            # ─── Core Pipeline Settings ─────────────────────────────────────
             - name: KUBEOPS_ENABLE_VECTOR_STORE
               value: "true"
             - name: KUBEOPS_LAZY_ANALYSIS
               value: "false"
-            - name: KUBEOPS_ENABLE_FULL_OLLAMA
+            # Canonical name — replaces KUBEOPS_ENABLE_FULL_OLLAMA (legacy alias still supported)
+            - name: KUBEOPS_ENABLE_FULL_AI
               value: "true"
             - name: KUBEOPS_MAX_ANALYZED_ISSUES
               value: "1"
@@ -47,24 +48,71 @@ spec:
               value: "120"
             - name: KUBEOPS_KUBECTL_TIMEOUT_SECONDS
               value: "90"
-            - name: OLLAMA_TIMEOUT_SECONDS
-              value: "60"
+
+            # ─── LLM Provider Selection ─────────────────────────────────────
+            # Set to "ollama" for local inference or "nvidia" for NVIDIA NIM.
+            # The setup.sh script patches this value automatically based on user choice.
+            - name: LLM_PROVIDER
+              value: "ollama"              # <- overridden to "nvidia" by setup.sh for NVIDIA path
+
+            # ─── Ollama Settings (used when LLM_PROVIDER=ollama) ────────────
             - name: OLLAMA_URL
               value: "http://ollama:11434/api/generate"
             - name: OLLAMA_MODEL
               value: "tinyllama:latest"
+            - name: OLLAMA_TIMEOUT_SECONDS
+              value: "60"
+
+            # ─── NVIDIA NIM Settings (used when LLM_PROVIDER=nvidia) ────────
+            - name: NVIDIA_BASE_URL
+              value: "https://integrate.api.nvidia.com/v1"
+            - name: NVIDIA_MODEL
+              value: "nvidia/llama-3.3-nemotron-super-49b-v1"
+            - name: NVIDIA_MAX_TOKENS
+              value: "512"
+            - name: NVIDIA_TEMPERATURE
+              value: "0.2"
+            # API key is injected from the Kubernetes Secret (never hardcoded here).
+            # The Secret is created by setup.sh using:
+            #   kubectl create secret generic nvidia-api-key --from-literal=api-key=<KEY>
+            # When LLM_PROVIDER=ollama this env var is present but unused.
+            - name: NVIDIA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nvidia-api-key
+                  key: api-key
+                  optional: true        # Pod still starts even if secret is absent (Ollama mode)
+
+            # ─── Cluster Access ─────────────────────────────────────────────
             - name: KUBECONFIG
               value: "/etc/k3s-config/k3s.yaml"
-          # Auto-configures k8sgpt on startup
+
+          # Configures k8sgpt auth on startup depending on LLM_PROVIDER.
+          # Using a shell if/else so both paths are handled in a single postStart hook.
           lifecycle:
             postStart:
               exec:
-                command: 
+                command:
                   - "/bin/sh"
                   - "-c"
                   - |
-                    k8sgpt auth add --backend ollama --model tinyllama:latest --baseurl http://ollama:11434 && \
-                    k8sgpt auth default --provider ollama
+                    if [ "${LLM_PROVIDER}" = "nvidia" ]; then
+                      echo "[k8sgpt] Configuring NVIDIA NIM backend..."
+                      k8sgpt auth add \
+                        --backend openai \
+                        --model "${NVIDIA_MODEL}" \
+                        --baseurl "${NVIDIA_BASE_URL}" \
+                        --password "${NVIDIA_API_KEY}" && \
+                      k8sgpt auth default --provider openai
+                    else
+                      echo "[k8sgpt] Configuring Ollama backend..."
+                      k8sgpt auth add \
+                        --backend ollama \
+                        --model "${OLLAMA_MODEL}" \
+                        --baseurl "http://ollama:11434" && \
+                      k8sgpt auth default --provider ollama
+                    fi
+
           resources:
             limits:
               memory: "1Gi"
@@ -72,6 +120,18 @@ spec:
             requests:
               memory: "256Mi"
               cpu: "100m"
+
+          volumeMounts:
+            - name: k3s-config
+              mountPath: /etc/k3s-config
+              readOnly: true
+
+      volumes:
+        - name: k3s-config
+          hostPath:
+            path: /etc/rancher/k3s
+            type: DirectoryOrCreate
+
 ---
 apiVersion: v1
 kind: Service
