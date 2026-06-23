@@ -68,7 +68,8 @@
   cd KubeOps-AI
 
   chmod +x setup.sh
-  ./setup.sh <YOUR_NODE_IP>
+  NODE_IP=$(curl -s ifconfig.me) 
+  ./setup.sh $NODE_IP
   ```
 
   The script will guide you through:
