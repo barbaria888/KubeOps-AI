@@ -53,7 +53,7 @@ def _run_webhook_analysis(alertname: str, namespace: str, pod: str):
         alertname, namespace, pod,
     )
     try:
-        results = analyze_cluster(namespace=namespace)
+        results = analyze_cluster(namespace=namespace, pod=pod)
         _webhook_results[(namespace, pod)] = {
             "alertname": alertname,
             "namespace": namespace,

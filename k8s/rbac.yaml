@@ -1,16 +1,19 @@
 # =============================================================================
-# KubeOps-AI — RBAC Configuration (Least-Privilege)
+# KubeOps-AI — RBAC Configuration (Cluster-Wide Read-Only + Guardrail Writes)
 # =============================================================================
 # This manifest creates a dedicated ServiceAccount for the backend pod and
-# grants it only the Kubernetes API permissions that the guardrail
-# (app/agents/guardrail.py) actually allows.
+# grants it:
+#   1. Cluster-wide READ-ONLY access to all standard resources so that
+#      k8sgpt and kubectl can inspect every namespace without 403 errors.
+#   2. Scoped WRITE permissions only for the verbs the guardrail
+#      (app/agents/guardrail.py) explicitly allows.
 #
 # Allowed kubectl verbs (from guardrail):
 #   get, describe, logs, set, rollout, scale,
 #   annotate, label, top, cordon, uncordon, port-forward
 #
 # BLOCKED at both guardrail AND RBAC level:
-#   delete, create, exec, apply, patch (raw), edit
+#   delete, create (except port-forward), exec, apply, patch (raw), edit
 # =============================================================================
 
 apiVersion: v1
@@ -31,48 +34,95 @@ metadata:
     app.kubernetes.io/name: kubeops-ai
     app.kubernetes.io/component: backend
 rules:
-  # ─── Read-only discovery (kubectl get, describe, k8sgpt analyze) ───────────
+  # ═══════════════════════════════════════════════════════════════════════════
+  # READ-ONLY — Cluster-wide visibility for k8sgpt and kubectl
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  # ─── Core API ("") ─────────────────────────────────────────────────────────
   - apiGroups: [""]
     resources:
       - pods
-      - pods/log           # kubectl logs
+      - pods/log              # kubectl logs
+      - pods/status
       - services
       - endpoints
       - nodes
+      - nodes/status
       - namespaces
       - events
       - configmaps
+      - secrets               # k8sgpt needs to detect missing/bad secrets
       - replicationcontrollers
       - persistentvolumeclaims
       - persistentvolumes
+      - resourcequotas
+      - limitranges
+      - serviceaccounts
     verbs: ["get", "list", "watch"]
 
+  # ─── Apps ──────────────────────────────────────────────────────────────────
   - apiGroups: ["apps"]
     resources:
       - deployments
+      - deployments/status
       - replicasets
       - statefulsets
       - daemonsets
     verbs: ["get", "list", "watch"]
 
+  # ─── Batch ─────────────────────────────────────────────────────────────────
   - apiGroups: ["batch"]
     resources:
       - jobs
       - cronjobs
     verbs: ["get", "list", "watch"]
 
+  # ─── Networking ────────────────────────────────────────────────────────────
   - apiGroups: ["networking.k8s.io"]
     resources:
       - ingresses
+      - ingresses/status
       - networkpolicies
     verbs: ["get", "list", "watch"]
 
+  # ─── Autoscaling ───────────────────────────────────────────────────────────
   - apiGroups: ["autoscaling"]
     resources:
       - horizontalpodautoscalers
     verbs: ["get", "list", "watch"]
 
-  # ─── Mutating actions allowed by guardrail ─────────────────────────────────
+  # ─── Storage ───────────────────────────────────────────────────────────────
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - storageclasses
+      - volumeattachments
+    verbs: ["get", "list", "watch"]
+
+  # ─── Policy ────────────────────────────────────────────────────────────────
+  - apiGroups: ["policy"]
+    resources:
+      - poddisruptionbudgets
+    verbs: ["get", "list", "watch"]
+
+  # ─── RBAC (read-only — allows debugging permission issues) ─────────────────
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - roles
+      - rolebindings
+      - clusterroles
+      - clusterrolebindings
+    verbs: ["get", "list", "watch"]
+
+  # ─── CRDs (read-only — k8sgpt custom analyzer support) ─────────────────────
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources:
+      - customresourcedefinitions
+    verbs: ["get", "list", "watch"]
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # MUTATING — Only what the guardrail explicitly allows
+  # ═══════════════════════════════════════════════════════════════════════════
+
   # kubectl set image, kubectl rollout, kubectl scale
   - apiGroups: ["apps"]
     resources:
