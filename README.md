@@ -46,6 +46,10 @@
       B -->|LLM_PROVIDER=ollama| E[Ollama / TinyLlama]
       B -->|LLM_PROVIDER=nvidia| G[NVIDIA NIM API]
       B -->|Execute| F[Kubectl Tool]
+      H[Prometheus] -->|Scrapes| I[kube-state-metrics]
+      H -->|Fires alerts| J[Alertmanager]
+      J -->|Webhook| K[Antigravity Listener]
+      K -->|POST /webhook/alert| B
   ```
 
   ---
@@ -55,7 +59,8 @@
   - **Backend:** Python, FastAPI, Pydantic, ChromaDB, SentenceTransformers, OpenAI SDK
   - **Frontend:** React, Vite, Axios
   - **AI / LLMs:** Ollama (TinyLlama / Gemma 2B) **or** NVIDIA NIM API — user's choice
-  - **Observability Tools:** K8sGPT, Prometheus, Grafana, Alertmanager
+  - **Observability:** K8sGPT, Prometheus, Grafana, Alertmanager, kube-state-metrics
+  - **Security:** RBAC (least-privilege ServiceAccount + ClusterRole aligned with guardrails)
 
   ---
 
@@ -128,15 +133,16 @@
 
   ```bash
   kubectl apply -f k8s/namespace.yaml
+  kubectl apply -f k8s/rbac.yaml                  # Least-privilege RBAC for backend
   kubectl apply -f k8s/backend.yaml
   kubectl apply -f k8s/frontend.yaml
-  kubectl apply -f k8s/clusterbinding.yaml
+  kubectl apply -f k8s/kube-state-metrics.yaml     # Required for Prometheus metrics
 
   # Ollama only (skip for NVIDIA mode):
   kubectl apply -f k8s/ollama.yaml
   ```
 
-  *Note: Backend deployment expects Kubeconfig at `/etc/rancher/k3s/k3s.yaml` (K3s). Adjust `KUBECONFIG` in `k8s/backend.yaml` for other distributions.*
+  > **Note:** The backend uses an in-cluster ServiceAccount (`kubeops-ai-backend`) for Kubernetes API access via RBAC. No kubeconfig file mount is needed — works on any distribution (K3s, K8s, Kind, Minikube).
 
   ### 🌐 Access Points
   All services are exposed via NodePorts — no `kubectl port-forward` needed:
@@ -188,11 +194,25 @@
 
   ---
 
+  ## 🛡️ Security — RBAC Model
+
+  KubeOps-AI uses **defense-in-depth** with two complementary security layers:
+
+  1. **Kubernetes RBAC** (`k8s/rbac.yaml`): A dedicated `kubeops-ai-backend` ServiceAccount with a least-privilege ClusterRole. Destructive verbs (`delete`, `create`, `exec`) are not granted at the API level.
+  2. **Python Guardrails** (`app/agents/guardrail.py`): Pre-execution filter that blocks commands containing `delete`, `rm`, `wipe`, `format`, shell injection patterns, and non-allowed kubectl verbs.
+
+  Even if the LLM suggests a destructive command, it is blocked by **both** layers.
+
+  ---
+
   ## 📈 Event-Driven Observability
 
-  The project includes an event-driven monitoring stack using **Prometheus**, **Alertmanager**, and **Grafana** integrated with the KubeOps-AI pipeline.
-  - Prometheus discovers cluster faults and triggers alerts.
-  - The webhook listener intercepts alerts and routes them to `POST /webhook/alert`.
+  The project includes an event-driven monitoring stack using **Prometheus**, **Alertmanager**, **kube-state-metrics**, and **Grafana** integrated with the KubeOps-AI pipeline.
+
+  - **kube-state-metrics** exports Kubernetes object state as Prometheus metrics (e.g., pod restart counts, deployment status).
+  - Prometheus scrapes kube-state-metrics and evaluates alert rules (e.g., `PodCrashLooping`).
+  - Alertmanager routes firing alerts to the **Antigravity Listener** webhook.
+  - The listener forwards the alert payload to `POST /webhook/alert` on the backend.
   - Firing alerts initiate a FastAPI `BackgroundTask` running targeted `k8sgpt` analysis (`--namespace <ns>`).
   - Webhook results are cached in-memory and exposed via `GET /webhook/results` for React dashboard polling.
   - When an alert resolves (`status == "resolved"`), the cached entry is automatically cleared.

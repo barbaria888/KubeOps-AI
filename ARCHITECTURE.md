@@ -204,20 +204,34 @@ The backend is built with **FastAPI** (Python) and acts as the "Intelligence Cor
 
 ### Component Breakdown
 1. **Namespace (`namespace.yaml`)**: Creates `k8s-ai` sandbox.
-2. **Ollama (`ollama.yaml`)**: *(Ollama mode only)* Deploys the local LLM server. Completely skipped in NVIDIA mode.
-3. **Backend (`backend.yaml`)**: FastAPI intelligence core.
+2. **RBAC (`rbac.yaml`)**: Dedicated `kubeops-ai-backend` ServiceAccount + least-privilege `kubeops-ai-operator` ClusterRole. Verbs are strictly aligned with the Python guardrail's allowed list. Destructive operations (`delete`, `create`, `exec`) are **not** granted.
+3. **Ollama (`ollama.yaml`)**: *(Ollama mode only)* Deploys the local LLM server. Completely skipped in NVIDIA mode.
+4. **Backend (`backend.yaml`)**: FastAPI intelligence core.
+    - Uses `serviceAccountName: kubeops-ai-backend` for in-cluster Kubernetes API access.
     - Configures `LLM_PROVIDER`, `NVIDIA_API_KEY` (from Secret), `NVIDIA_MODEL`, `OLLAMA_URL` etc.
     - **postStart hook** runs `k8sgpt auth add` configured for the active provider.
     - `KUBEOPS_ENABLE_VECTOR_STORE: "true"` — ChromaDB Incident Memory enabled by default.
     - NVIDIA API key injected from `nvidia-api-key` Secret via `valueFrom.secretKeyRef` (marked `optional: true` so Ollama mode pods still start).
-4. **Frontend (`frontend.yaml`)**: Nginx + React UI via NodePort `30007`.
-5. **nvidia-secret.yaml**: Template for the Kubernetes Secret. Populated by `setup.sh` at runtime.
+5. **Frontend (`frontend.yaml`)**: Nginx + React UI via NodePort `30007`.
+6. **nvidia-secret.yaml**: Template for the Kubernetes Secret. Populated by `setup.sh` at runtime.
+7. **kube-state-metrics (`kube-state-metrics.yaml`)**: Exports Kubernetes object state as Prometheus metrics. Required for alert rules to function.
+
+### Security Model — Defense in Depth
+
+KubeOps-AI enforces two independent security layers:
+
+| Layer | File | What It Blocks |
+|---|---|---|
+| **Kubernetes RBAC** | `k8s/rbac.yaml` | API-level: `delete`, `create`, `exec` verbs are not granted on any resource |
+| **Python Guardrail** | `app/agents/guardrail.py` | Application-level: blocks `delete`, `rm`, `wipe`, `format` keywords and shell injection patterns |
+
+Even if one layer has a bug, the other provides a safety net.
 
 ### Connecting it all together
 - **Frontend Pod** receives traffic on port `30007`.
 - Nginx routes `/api` traffic internally to the **Backend Service** on port `8000`.
 - Backend calls **Ollama Service** (internal port `11434`) OR **NVIDIA NIM API** (external HTTPS) based on `LLM_PROVIDER`.
-- Backend uses mounted `kubeconfig` to talk to the **Kubernetes API Server**.
+- Backend uses its mounted ServiceAccount token (auto-injected at `/var/run/secrets/kubernetes.io/serviceaccount/`) to talk to the **Kubernetes API Server** — no kubeconfig file needed.
 
 ---
 
@@ -227,16 +241,18 @@ All observability components are exposed via NodePorts for direct access:
 
 | Component | NodePort | Role |
 |---|---|---|
-| **Prometheus** | `32001` | Scrapes metrics, evaluates alert rules |
+| **Prometheus** | `32001` | Scrapes kube-state-metrics, evaluates alert rules |
 | **Alertmanager** | `32002` | Routes alerts to Antigravity Listener |
 | **Grafana** | `32000` | Visual dashboards (`admin` / `admin`) |
+| **kube-state-metrics** | Internal | Exports Kubernetes object state as Prometheus metrics |
 | **Antigravity Listener** | Internal | Webhook bridge: Alertmanager → Backend |
 
 ### Event Flow
 ```
 Pod Failure
-  → Prometheus (detects via alert rules)
-  → Alertmanager (routes via webhook)
+  → kube-state-metrics (exports kube_pod_container_status_restarts_total)
+  → Prometheus (evaluates alert rules, detects threshold breach)
+  → Alertmanager (routes via webhook_configs)
   → Antigravity Listener (POST /webhook/alertmanager)
   → FastAPI Backend (POST /webhook/alert)
   → BackgroundTask: k8sgpt --namespace <ns> + query_llm()

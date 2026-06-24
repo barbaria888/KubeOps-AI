@@ -15,9 +15,10 @@ The architecture consists of three major pillars: **The Intelligence Core**, **T
 ### 1. The Intelligence Core (Backend)
 Built on **FastAPI (Python)**, this is the brain of the operation. It orchestrates the entire agentic loop.
 - **Issue Discovery (`k8sgpt`)**: Scans the cluster state to find faulty resources (e.g., CrashLoopBackOff pods, Pending PVCs).
-- **AI Reasoning (Ollama + Gemma 2B)**: Takes the raw failure data and asks a locally hosted Gemma 2B model to explain the issue and formulate a fix.
+- **AI Reasoning (Dual LLM Support)**: Takes the raw failure data and asks either a locally hosted **Ollama** model (TinyLlama/Gemma 2B) or the cloud-based **NVIDIA NIM API** (70B+ parameter models) to explain the issue and formulate a fix. Selectable via `LLM_PROVIDER` environment variable.
 - **Incident Memory (ChromaDB)**: Every successful resolution is embedded via `SentenceTransformers` and stored in ChromaDB. Before reasoning, the backend queries this database so the AI "learns" from past identical outages in your specific environment.
 - **Guardrails**: A strict regex/semantic filter that intercepts any suggested `kubectl` commands. Destructive actions (like `delete namespace` or `rm -rf`) are automatically blocked.
+- **RBAC (Defense-in-Depth)**: The backend pod runs under a dedicated `kubeops-ai-backend` ServiceAccount with a least-privilege `kubeops-ai-operator` ClusterRole. Destructive verbs (`delete`, `create`, `exec`) are blocked at the Kubernetes API level, complementing the Python guardrail.
 
 ### 2. The Operations Dashboard (Frontend)
 Built using **React + Vite**, the frontend provides a sleek, dark-mode, glassmorphic UI (Scorpio Theme) utilizing pure CSS.
@@ -26,10 +27,11 @@ Built using **React + Vite**, the frontend provides a sleek, dark-mode, glassmor
 
 ### 3. The Event-Driven Observability Stack
 The newest addition to the platform closes the loop from "Polling" to "Event-Driven" resolution.
-- **Prometheus**: Automatically discovers cluster nodes, pods, and API servers, scraping their metrics. Contains pre-defined alerting rules (like `PodCrashLooping`).
+- **kube-state-metrics**: Exports Kubernetes object state as Prometheus metrics (pod restart counts, deployment status, etc.). Required for alert rules to function.
+- **Prometheus**: Automatically discovers cluster nodes, pods, and API servers. Scrapes kube-state-metrics for `kube_*` metrics. Contains pre-defined alerting rules (like `PodCrashLooping`).
 - **Grafana**: Auto-provisioned with Prometheus datasources and standard K8s dashboards for complete visual observability.
 - **Alertmanager**: Captures firing alerts from Prometheus and routes them to the webhook listener.
-- **Antigravity Listener (Webhook Integrator)**: A dedicated Python FastAPI background task that catches Prometheus alerts, extracts key metadata (`status`, `namespace`, `pod`, `alertname`), and forwards the payload into KubeOps-AI's backend with exponential backoff and retry capabilities.
+- **Antigravity Listener (Webhook Integrator)**: A dedicated Python FastAPI background task that catches Prometheus alerts, extracts key metadata (`status`, `namespace`, `pod`, `alertname`), and forwards the payload into KubeOps-AI's backend at `POST /webhook/alert` with exponential backoff and retry capabilities.
 
 ---
 
@@ -51,15 +53,18 @@ The newest addition to the platform closes the loop from "Polling" to "Event-Dri
 The entire platform is defined via declarative Kubernetes manifests found in the `k8s/` directory. It is 100% compatible with lightweight distributions like **K3s**.
 
 - `namespace.yaml`: Sandboxes the environment in `k8s-ai`.
-- `ollama.yaml`: Deploys the LLM runner internally.
-- `backend.yaml`: Deploys FastAPI and ChromaDB. Mounts the host's `kubeconfig` to allow it to execute `kubectl` commands against the cluster.
+- `rbac.yaml`: Dedicated `kubeops-ai-backend` ServiceAccount + least-privilege `kubeops-ai-operator` ClusterRole. Verbs aligned with the Python guardrail.
+- `ollama.yaml`: Deploys the LLM runner internally (Ollama mode only; skipped for NVIDIA).
+- `backend.yaml`: Deploys FastAPI and ChromaDB. Uses the `kubeops-ai-backend` ServiceAccount for in-cluster Kubernetes API access — no kubeconfig mount needed.
 - `frontend.yaml`: Exposes the React app via Nginx on a NodePort.
+- `kube-state-metrics.yaml`: Exports Kubernetes object metrics for Prometheus.
 - `prometheus.yaml`, `alertmanager.yaml`, `grafana.yaml`: Deploys the automated monitoring and alerting stack.
 - `antigravity-listener.yaml`: Deploys the bridging script that links Alertmanager directly into the KubeOps-AI workflow.
 
 ## 🛠️ Technology Stack Overview
 - **Languages**: Python, JavaScript, CSS
 - **Frameworks**: FastAPI, React, Vite
-- **AI/ML**: Ollama (Gemma 2B), ChromaDB, SentenceTransformers
-- **Infrastructure**: Kubernetes (K3s), Prometheus, Grafana, Alertmanager
+- **AI/ML**: Ollama (TinyLlama / Gemma 2B) or NVIDIA NIM API, ChromaDB, SentenceTransformers
+- **Infrastructure**: Kubernetes (K3s / K8s / Kind / Minikube), Prometheus, Grafana, Alertmanager, kube-state-metrics
+- **Security**: RBAC (ServiceAccount + ClusterRole), Python Guardrails
 - **CLI Tools**: K8sGPT, Kubectl

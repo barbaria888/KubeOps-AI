@@ -348,9 +348,9 @@ step "Deploying React + Nginx Frontend (Operations Dashboard)…"
 kubectl apply -f k8s/frontend.yaml
 ok "Frontend deployment applied"
 
-step "Applying ClusterRoleBinding for kubectl cluster access…"
-kubectl apply -f k8s/clusterbinding.yaml
-ok "ClusterRoleBinding applied"
+step "Applying RBAC (ServiceAccount + ClusterRole + Binding)…"
+kubectl apply -f k8s/rbac.yaml
+ok "RBAC applied (kubeops-ai-backend ServiceAccount + least-privilege ClusterRole)"
 
 # =============================================================================
 # PHASE 5b — OBSERVABILITY STACK
@@ -362,6 +362,10 @@ echo ""
 prompt "Deploy Prometheus + Grafana + Alertmanager? [Y/n]:"
 read -r deploy_obs
 if [[ ! "${deploy_obs}" =~ ^[Nn]$ ]]; then
+
+  step "Deploying kube-state-metrics (Kubernetes object metrics for Prometheus)…"
+  kubectl apply -f k8s/kube-state-metrics.yaml
+  ok "kube-state-metrics applied"
 
   step "Deploying Prometheus (metrics + alert rules)…"
   kubectl apply -f k8s/prometheus.yaml

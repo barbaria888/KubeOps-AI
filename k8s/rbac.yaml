@@ -1,0 +1,125 @@
+# =============================================================================
+# KubeOps-AI — RBAC Configuration (Least-Privilege)
+# =============================================================================
+# This manifest creates a dedicated ServiceAccount for the backend pod and
+# grants it only the Kubernetes API permissions that the guardrail
+# (app/agents/guardrail.py) actually allows.
+#
+# Allowed kubectl verbs (from guardrail):
+#   get, describe, logs, set, rollout, scale,
+#   annotate, label, top, cordon, uncordon, port-forward
+#
+# BLOCKED at both guardrail AND RBAC level:
+#   delete, create, exec, apply, patch (raw), edit
+# =============================================================================
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubeops-ai-backend
+  namespace: k8s-ai
+  labels:
+    app.kubernetes.io/name: kubeops-ai
+    app.kubernetes.io/component: backend
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubeops-ai-operator
+  labels:
+    app.kubernetes.io/name: kubeops-ai
+    app.kubernetes.io/component: backend
+rules:
+  # ─── Read-only discovery (kubectl get, describe, k8sgpt analyze) ───────────
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log           # kubectl logs
+      - services
+      - endpoints
+      - nodes
+      - namespaces
+      - events
+      - configmaps
+      - replicationcontrollers
+      - persistentvolumeclaims
+      - persistentvolumes
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - replicasets
+      - statefulsets
+      - daemonsets
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+      - networkpolicies
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list", "watch"]
+
+  # ─── Mutating actions allowed by guardrail ─────────────────────────────────
+  # kubectl set image, kubectl rollout, kubectl scale
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - deployments/scale    # kubectl scale
+      - replicasets
+      - replicasets/scale
+      - statefulsets
+      - statefulsets/scale
+      - daemonsets
+    verbs: ["patch", "update"]
+
+  # kubectl annotate, kubectl label, kubectl cordon/uncordon
+  - apiGroups: [""]
+    resources:
+      - pods
+      - nodes
+      - services
+      - namespaces
+    verbs: ["patch", "update"]
+
+  # kubectl top pods / kubectl top nodes (metrics API)
+  - apiGroups: ["metrics.k8s.io"]
+    resources:
+      - pods
+      - nodes
+    verbs: ["get", "list"]
+
+  # kubectl port-forward (requires pods/portforward subresource)
+  - apiGroups: [""]
+    resources:
+      - pods/portforward
+    verbs: ["create"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubeops-ai-operator-binding
+  labels:
+    app.kubernetes.io/name: kubeops-ai
+    app.kubernetes.io/component: backend
+subjects:
+  - kind: ServiceAccount
+    name: kubeops-ai-backend
+    namespace: k8s-ai
+roleRef:
+  kind: ClusterRole
+  name: kubeops-ai-operator
+  apiGroup: rbac.authorization.k8s.io

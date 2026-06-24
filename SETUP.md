@@ -36,7 +36,7 @@ kubectl cluster-info   # Should return the control plane URL
 ```
 
 > [!NOTE]
-> **Supported cluster types**: K3s (primary target), K8s, Kind, Minikube. The default kubeconfig path in manifests is `/etc/rancher/k3s/k3s.yaml` (K3s). Adjust `KUBECONFIG` in `k8s/backend.yaml` if you're using a different distribution.
+> **Supported cluster types**: K3s, K8s, Kind, Minikube. The backend uses an in-cluster ServiceAccount for Kubernetes API access — no kubeconfig mount or distribution-specific configuration is needed.
 
 ---
 
@@ -81,19 +81,24 @@ When you select **Local Ollama** during `setup.sh`, the script:
 # 1. Create namespace
 kubectl apply -f k8s/namespace.yaml
 
-# 2. Deploy Ollama (local LLM runner)
+# 2. Apply RBAC (ServiceAccount + least-privilege ClusterRole)
+kubectl apply -f k8s/rbac.yaml
+
+# 3. Deploy Ollama (local LLM runner)
 kubectl apply -f k8s/ollama.yaml
 
-# 3. Wait for Ollama to be ready
+# 4. Wait for Ollama to be ready
 kubectl wait pod -n k8s-ai -l app=ollama --for=condition=Ready --timeout=180s
 
-# 4. Pull the TinyLlama model
+# 5. Pull the TinyLlama model
 kubectl exec -n k8s-ai deploy/ollama -- ollama pull tinyllama:latest
 
-# 5. Deploy backend, frontend, and access controls
+# 6. Deploy backend and frontend
 kubectl apply -f k8s/backend.yaml
 kubectl apply -f k8s/frontend.yaml
-kubectl apply -f k8s/clusterbinding.yaml
+
+# 7. Deploy kube-state-metrics (required for Prometheus alert rules)
+kubectl apply -f k8s/kube-state-metrics.yaml
 ```
 
 ### Switching to a better model (optional)
@@ -143,21 +148,26 @@ When prompted, select **[2] NVIDIA NIM API** and paste your key. The script hand
 # 1. Create namespace
 kubectl apply -f k8s/namespace.yaml
 
-# 2. Create the Kubernetes Secret for your API key
+# 2. Apply RBAC (ServiceAccount + least-privilege ClusterRole)
+kubectl apply -f k8s/rbac.yaml
+
+# 3. Create the Kubernetes Secret for your API key
 kubectl create secret generic nvidia-api-key \
   --namespace k8s-ai \
   --from-literal=api-key="nvapi-xxxx..."
 
-# 3. Patch backend.yaml to set LLM_PROVIDER=nvidia
+# 4. Patch backend.yaml to set LLM_PROVIDER=nvidia
 # Edit k8s/backend.yaml and change:
 #   value: "ollama"   →   value: "nvidia"
 # under the LLM_PROVIDER env entry.
 # Then apply:
 kubectl apply -f k8s/backend.yaml
 
-# 4. Deploy frontend and access controls (Ollama NOT needed)
+# 5. Deploy frontend (Ollama NOT needed)
 kubectl apply -f k8s/frontend.yaml
-kubectl apply -f k8s/clusterbinding.yaml
+
+# 6. Deploy kube-state-metrics (required for Prometheus alert rules)
+kubectl apply -f k8s/kube-state-metrics.yaml
 ```
 
 ### Available NVIDIA NIM Models
@@ -292,7 +302,7 @@ kubectl describe pod <pod-name> -n k8s-ai
 kubectl logs -n k8s-ai deploy/backend --previous
 # Common causes:
 #   - NVIDIA_API_KEY secret missing (if NVIDIA mode)
-#   - Kubeconfig not mounted correctly
+#   - RBAC ServiceAccount not applied (run: kubectl apply -f k8s/rbac.yaml)
 #   - ChromaDB initialization failure
 ```
 
@@ -360,3 +370,23 @@ kubectl exec -n k8s-ai deploy/ollama -- ollama pull tinyllama:latest
 | `KUBEOPS_LAZY_ANALYSIS` | `false` | Return immediately without analysis |
 | `KUBEOPS_MAX_ANALYZED_ISSUES` | `1` | Max issues to analyze per request |
 | `KUBEOPS_ENABLE_VECTOR_STORE` | `true` | Enable ChromaDB incident memory |
+
+---
+
+## RBAC Reference
+
+The backend uses a dedicated ServiceAccount (`kubeops-ai-backend`) with a least-privilege ClusterRole (`kubeops-ai-operator`). The allowed Kubernetes API verbs are aligned with the Python guardrail:
+
+| Guardrail Verb | Kubernetes RBAC Mapping |
+|---|---|
+| `get`, `describe` | `get`, `list`, `watch` on core, apps, batch, networking resources |
+| `logs` | `get` on `pods/log` |
+| `set image` | `patch`, `update` on `deployments`, `statefulsets`, `daemonsets` |
+| `rollout` | `patch`, `update` on `deployments` |
+| `scale` | `patch`, `update` on `deployments/scale`, `replicasets/scale`, `statefulsets/scale` |
+| `annotate`, `label` | `patch`, `update` on `pods`, `nodes`, `services`, `namespaces` |
+| `cordon`, `uncordon` | `patch`, `update` on `nodes` |
+| `top` | `get`, `list` on `metrics.k8s.io` resources |
+| `port-forward` | `create` on `pods/portforward` |
+
+**Blocked** at both RBAC and guardrail level: `delete`, `create`, `exec`, `apply`, `edit`.

@@ -7,7 +7,7 @@ app = FastAPI(title="Antigravity Alertmanager Listener")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("antigravity-listener")
 
-DOWNSTREAM_URL = "http://backend.k8s-ai.svc.cluster.local:8000/api/webhook/alert"
+DOWNSTREAM_URL = "http://backend.k8s-ai.svc.cluster.local:8000/webhook/alert"
 
 async def process_alerts(payload: dict):
     """

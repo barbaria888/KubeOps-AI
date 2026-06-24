@@ -13,6 +13,7 @@ spec:
       labels:
         app: backend
     spec:
+      serviceAccountName: kubeops-ai-backend
       # Allowing scheduling on all nodes (Control-plane/Master/Unhealthy)
       tolerations:
       - key: "node-role.kubernetes.io/control-plane"
@@ -84,8 +85,9 @@ spec:
                   optional: true        # Pod still starts even if secret is absent (Ollama mode)
 
             # ─── Cluster Access ─────────────────────────────────────────────
-            - name: KUBECONFIG
-              value: "/etc/k3s-config/k3s.yaml"
+            # Uses in-cluster ServiceAccount (kubeops-ai-backend) via RBAC.
+            # No KUBECONFIG env var needed — kubectl auto-discovers the
+            # mounted SA token at /var/run/secrets/kubernetes.io/serviceaccount/.
 
           # Configures k8sgpt auth on startup depending on LLM_PROVIDER.
           # Using a shell if/else so both paths are handled in a single postStart hook.
@@ -121,16 +123,8 @@ spec:
               memory: "256Mi"
               cpu: "100m"
 
-          volumeMounts:
-            - name: k3s-config
-              mountPath: /etc/k3s-config
-              readOnly: true
-
-      volumes:
-        - name: k3s-config
-          hostPath:
-            path: /etc/rancher/k3s
-            type: DirectoryOrCreate
+          # No volume mounts needed — in-cluster SA token is auto-mounted
+          # at /var/run/secrets/kubernetes.io/serviceaccount/ by Kubernetes.
 
 ---
 apiVersion: v1
