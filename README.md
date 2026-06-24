@@ -13,7 +13,7 @@
 
   **KubeOps-AI** is an autonomous Kubernetes troubleshooting platform that uses AI (your choice of **local Ollama** or **NVIDIA NIM cloud LLMs**) to analyze cluster faults, deduce root causes, suggest actionable fixes, and maintain an **Incident Memory** vector database. Features a full **Approve & Run** interface to remediate issues safely in one click.
 
-  <img width="1672" height="941" alt="architecture-diagram" src="https://github.com/user-attachments/assets/5bf6f41a-b7f3-49ef-afda-40735a03e663" />
+  <img width="1536" height="1024" alt="Image" src="https://github.com/user-attachments/assets/045b17ed-4c3b-474e-8103-4cf480e25d7d" />
 
   ---
 
