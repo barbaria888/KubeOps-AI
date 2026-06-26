@@ -1,0 +1,34 @@
+name: Build and Push Agent
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: hardik0811
+        password: ${{ secrets.DOCKER_PASSWORD }}
+        
+    - name: Build Frontend Docker image
+      run: |
+        docker build -t hardik0811/kubeops-ai-frontend:prod ./frontend
+    - name: Push Frontend Docker image
+      run: |
+        docker push hardik0811/kubeops-ai-frontend:prod      
+
+ #for backend image build          
+    - name: Build Backend Docker image
+      run: |
+        docker build -t hardik0811/kubeops-ai-backend:prod .
+
+    - name: Push Backend Docker image
+      run: |
+        docker push hardik0811/kubeops-ai-backend:prod
