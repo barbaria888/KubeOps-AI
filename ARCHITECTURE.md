@@ -9,7 +9,7 @@ Welcome to the detailed architectural breakdown of the **KubeOps-AI Dashboard**.
 The KubeOps-AI system is a **powerful, autonomous troubleshooting pipeline** designed to monitor, diagnose, and remediate issues within a Kubernetes cluster. 
 
 Instead of an administrator manually hunting down failing pods or reading cryptic logs, this system automatically:
-1. Discovers cluster issues using `k8sgpt`.
+1. Discovers cluster issues using `RunWhen Skills Registry`.
 2. Analyzes the root cause using your **chosen LLM** — either a private, local model (Ollama) or a powerful cloud model (NVIDIA NIM API).
 3. Consults an "Incident Memory" (Vector Database) to remember past fixes.
 4. Suggests a concrete `kubectl` command to fix the issue.
@@ -51,7 +51,7 @@ graph TB
 | **Model Quality** | TinyLlama / Gemma 2B | 70B+ parameter models |
 | **Internet Required** | No (after image pull) | Yes |
 | **Setup** | Auto (setup.sh pulls model) | NVIDIA API key required |
-| **k8sgpt backend** | `ollama` | `openai` (compatible API) |
+
 
 ---
 
@@ -64,14 +64,14 @@ sequenceDiagram
     participant User
     participant Frontend as Nginx + React UI
     participant Backend as FastAPI Core
-    participant Tools as K8sGPT & Kubectl
+    participant Tools as RunWhen & Kubectl
     participant LLM as "Ollama OR NVIDIA NIM"
     participant DB as ChromaDB (Memory)
 
     %% Flow: Fetching Issues
     User->>Frontend: Open Dashboard
     Frontend->>Backend: GET /api/analyze
-    Backend->>Tools: Run `k8sgpt analyze` (cluster-wide)
+    Backend->>Tools: Fetch diagnostic data via RunWhen
     Tools-->>Backend: Return Raw Cluster Issues
     
     %% Flow: AI Reasoning
@@ -95,7 +95,7 @@ sequenceDiagram
     participant AM as Alertmanager
     participant AL as Antigravity Listener
     participant Backend as FastAPI Core
-    participant Tools as K8sGPT (Targeted)
+    participant Tools as RunWhen (Targeted)
     participant LLM as "Ollama OR NVIDIA NIM"
 
     Cluster->>Prom: Enters crash / failure state
@@ -105,7 +105,7 @@ sequenceDiagram
     
     Note over Backend: Spawns FastAPI BackgroundTask
     Backend-->>AL: HTTP 200 (Accepted)
-    Backend->>Tools: Run `k8sgpt analyze --namespace <ns>`
+    Backend->>Tools: Execute mapped RunWhen script
     Tools-->>Backend: Return targeted namespace issues
     Backend->>LLM: Prompt via query_llm()
     LLM-->>Backend: AI explanation + fix command
@@ -169,16 +169,17 @@ The backend is built with **FastAPI** (Python) and acts as the "Intelligence Cor
 
 ### Directory Structure & Roles
 - **Agents (`app/agents/`)**:
-  - `analyzer.py`: Orchestrates the pipeline. Scoped `--namespace` support. Backward-compat env var alias.
-  - `reasoning.py`: Builds the contextual prompt and calls `query_llm()`.
-  - `action.py`: Generates the actionable `kubectl` command via `query_llm()`.
-  - `guardrail.py`: Blocks destructive commands. If the AI suggests `delete`, `rm`, or `wipe`, marks `safe: false`.
+  - `analyzer.py`: Orchestrates the pipeline. Maps alerts to RunWhen scripts. Uses multi-command validation (`validate_action_list`) and fallback actions.
+  - `reasoning.py`: Invokes `gather_cluster_context()` for live cluster context, fetches similar incidents, and prompts the LLM for a multi-step analysis (Root Cause, Evidence, 5-8 Investigation Commands, Fix, Rollback).
+  - `action.py`: Builds multi-step execution plans (DIAGNOSTIC → REMEDIATION → VERIFICATION) using live context.
+  - `guardrail.py`: Blocks destructive commands. Validates multi-line actions with `validate_action_list` and filters blocked keywords (`delete`, `rm`, `wipe`, `format`, `exec`, `apply`, `edit`).
 - **Tools (`app/tools/`)**:
-  - `llm.py`: **Unified LLM router**. Reads `LLM_PROVIDER` and dispatches to the correct backend.
-  - `ollama.py`: Ollama HTTP client (used when `LLM_PROVIDER=ollama`).
-  - `k8sgpt.py`: k8sgpt subprocess runner (supports `--namespace` scoping).
+  - `llm.py`: **Unified LLM router**. Configures the comprehensive `SRE_SYSTEM_PROMPT` containing RBAC-allowed verbs.
+  - `cluster_context.py`: **Live Cluster Context Collector**. Runs RBAC-compliant diagnostic commands (`kubectl get pods`, `kubectl get events`, `kubectl top pods/nodes`, `kubectl describe pod`, `kubectl logs --tail=50 --previous`) and truncates outputs.
+  - `ollama.py`: Ollama HTTP client (used when `LLM_PROVIDER=ollama`). Custom `num_predict: 1024` for full diagnostic output.
+  - `runwhen.py`: Deterministic router that executes audited RunWhen CodeBundle scripts based on Prometheus alertnames.
   - `kubectl.py`: kubectl subprocess runner.
-  - `vector_store.py`: ChromaDB Incident Memory client.
+  - `vector_store.py`: ChromaDB Incident Memory client. Fetches top 5 incidents and formats them.
 
 ### Key Environment Variables
 
@@ -209,7 +210,7 @@ The backend is built with **FastAPI** (Python) and acts as the "Intelligence Cor
 4. **Backend (`backend.yaml`)**: FastAPI intelligence core.
     - Uses `serviceAccountName: kubeops-ai-backend` for in-cluster Kubernetes API access.
     - Configures `LLM_PROVIDER`, `NVIDIA_API_KEY` (from Secret), `NVIDIA_MODEL`, `OLLAMA_URL` etc.
-    - **postStart hook** runs `k8sgpt auth add` configured for the active provider.
+    - **initContainer** fetches the RunWhen CodeCollection git repository.
     - `KUBEOPS_ENABLE_VECTOR_STORE: "true"` — ChromaDB Incident Memory enabled by default.
     - NVIDIA API key injected from `nvidia-api-key` Secret via `valueFrom.secretKeyRef` (marked `optional: true` so Ollama mode pods still start).
 5. **Frontend (`frontend.yaml`)**: Nginx + React UI via NodePort `30007`.
@@ -220,12 +221,11 @@ The backend is built with **FastAPI** (Python) and acts as the "Intelligence Cor
 
 KubeOps-AI enforces two independent security layers:
 
-| Layer | File | What It Blocks |
+| Layer | Allowed Verbs | Blocked Verbs |
 |---|---|---|
-| **Kubernetes RBAC** | `k8s/rbac.yaml` | API-level: `delete`, `create`, `exec` verbs are not granted on any resource |
-| **Python Guardrail** | `app/agents/guardrail.py` | Application-level: blocks `delete`, `rm`, `wipe`, `format` keywords and shell injection patterns |
-
-Even if one layer has a bug, the other provides a safety net.
+| **RBAC ClusterRole** | `get`, `list`, `watch`, `patch`, `update` (scoped) | `delete`, `create` (except port-forward), `exec` |
+| **Python Guardrail** | `get`, `describe`, `logs`, `set`, `rollout`, `scale`, `annotate`, `label`, `top`, `cordon`, `uncordon`, `port-forward` | `delete`, `rm`, `wipe`, `format`, `exec`, `apply`, `edit` |
+Both layers enforce independently — even if one layer has a bug, the other provides a safety net.
 
 ### Connecting it all together
 - **Frontend Pod** receives traffic on port `30007`.
@@ -255,7 +255,7 @@ Pod Failure
   → Alertmanager (routes via webhook_configs)
   → Antigravity Listener (POST /webhook/alertmanager)
   → FastAPI Backend (POST /webhook/alert)
-  → BackgroundTask: k8sgpt --namespace <ns> + query_llm()
+  → BackgroundTask: runwhen_diagnostic + query_llm()
   → _webhook_results cache
   → React Dashboard (polls GET /webhook/results)
   → Admin sees issue card → Approve & Run → Fix verified

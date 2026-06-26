@@ -2,13 +2,12 @@
 app/agents/reasoning.py — SRE Diagnostic Reasoning Agent
 
 Builds a production-grade diagnostic prompt using:
-  1. The raw issue description (from k8sgpt or kubectl fallback).
+  1. The structured diagnostic report (from RunWhen codebundle or kubectl fallback).
   2. Live cluster context collected via RBAC-compliant kubectl commands.
   3. Formatted historical incidents from ChromaDB vector store.
 
-The LLM is instructed to produce a structured root-cause analysis with
-an investigation workflow of 5-8 kubectl commands — going far beyond
-a shallow ``kubectl get pods -A``.
+The LLM is instructed to produce a structured root-cause summary and exactly ONE 
+safe remediation command.
 
 All suggested commands are restricted to the RBAC-allowed verb set:
   get, describe, logs, set, rollout, scale, annotate, label, top,
@@ -26,20 +25,20 @@ logger = logging.getLogger(__name__)
 
 
 def explain_issue(
-    issue: str,
+    diagnostic_report: str,
     namespace: Optional[str] = None,
     pod: Optional[str] = None,
 ) -> str:
-    """Analyze a Kubernetes issue using live cluster state and historical context.
+    """Analyze a Kubernetes issue using a verified diagnostic report, live cluster state and historical context.
 
     Args:
-        issue:     Raw issue description from k8sgpt or kubectl fallback.
+        diagnostic_report: Structured markdown report from RunWhen script or kubectl fallback.
         namespace: Target namespace (defaults to ``k8s-ai``).
         pod:       Specific pod name when available (from webhook alert).
 
     Returns:
         A structured diagnostic analysis from the LLM including root cause,
-        evidence, investigation commands, remediation, and rollback plan.
+        evidence, and ONE safe remediation command.
     """
     # ── 1. Collect live cluster context (RBAC-safe get/describe/logs) ────
     ns = namespace or "k8s-ai"
@@ -51,7 +50,7 @@ def explain_issue(
 
     # ── 2. Retrieve and format historical incidents from ChromaDB ────────
     try:
-        raw_past = search_similar(issue)
+        raw_past = search_similar(diagnostic_report)
         past_incidents = format_similar_incidents(raw_past)
     except Exception as exc:
         logger.warning("Failed to search vector store: %s", exc)
@@ -61,9 +60,9 @@ def explain_issue(
     prompt = f"""You are a senior Kubernetes SRE performing root-cause analysis.
 
 ═══════════════════════════════════════════════════════
-CURRENT ISSUE
+DIAGNOSTIC REPORT
 ═══════════════════════════════════════════════════════
-{issue}
+{diagnostic_report}
 
 ═══════════════════════════════════════════════════════
 LIVE CLUSTER STATE (namespace: {ns})
@@ -79,23 +78,12 @@ SIMILAR PAST INCIDENTS (from incident memory)
 INSTRUCTIONS
 ═══════════════════════════════════════════════════════
 
-Analyze the issue using the live cluster state and past incidents above.
+Analyze the diagnostic report using the live cluster state and past incidents above.
 
 IMPORTANT — kubectl verb restrictions (RBAC policy):
   ALLOWED: get, describe, logs, set, rollout, scale, annotate, label,
            top, cordon, uncordon, port-forward
   BLOCKED: delete, create, exec, apply, patch, edit
-
-Focus on real Kubernetes operational issues:
-  - Pod failures (CrashLoopBackOff, ImagePullBackOff, ErrImagePull,
-    OOMKilled, CreateContainerError, RunContainerError)
-  - Scheduling failures (Pending pods, taints, node affinity, resource pressure)
-  - Deployment issues (rollout stuck, replica mismatch, surge failures)
-  - Networking (service endpoint mismatches, DNS, ingress misconfig)
-  - Storage (PVC pending, mount failures, volume access modes)
-  - Resource exhaustion (CPU/memory limits, node pressure, evictions)
-
-Ignore informational findings like unused ConfigMaps or Secrets.
 
 If past incidents match the current pattern, reference them explicitly
 and explain whether the same fix applies.
@@ -106,24 +94,10 @@ Root Cause:
 <one clear sentence identifying the most likely root cause>
 
 Evidence:
-<2-3 bullet points citing specific data from the live cluster state>
-
-Investigation Commands:
-1. <kubectl command> — <what it reveals>
-2. <kubectl command> — <what it reveals>
-3. <kubectl command> — <what it reveals>
-4. <kubectl command> — <what it reveals>
-5. <kubectl command> — <what it reveals>
-
-(Provide 5-8 commands. Start with diagnostic commands like describe,
-logs, get events. Only include mutating commands like set image or
-rollout restart if the diagnosis is clear.)
+<1-2 bullet points citing specific data from the diagnostic report or live state>
 
 Recommended Fix:
-<specific remediation steps using only ALLOWED kubectl verbs>
-
-Rollback Plan:
-<what to do if the fix makes things worse>
+<exactly ONE safe kubectl command using only ALLOWED verbs>
 """
 
     return query_llm(prompt)

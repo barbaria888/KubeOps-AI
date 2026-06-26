@@ -19,16 +19,16 @@ jobs:
         
     - name: Build Frontend Docker image
       run: |
-        docker build -t hardik0811/kubeops-ai-frontend:prod ./frontend
+        docker build -t hardik0811/kubeops-ai-frontend:latest ./frontend
     - name: Push Frontend Docker image
       run: |
-        docker push hardik0811/kubeops-ai-frontend:prod      
+        docker push hardik0811/kubeops-ai-frontend:latest       
 
  #for backend image build          
     - name: Build Backend Docker image
       run: |
-        docker build -t hardik0811/kubeops-ai-backend:prod .
+        docker build -t hardik0811/kubeops-ai-backend:latest .
 
     - name: Push Backend Docker image
       run: |
-        docker push hardik0811/kubeops-ai-backend:prod
+        docker push hardik0811/kubeops-ai-backend:latest

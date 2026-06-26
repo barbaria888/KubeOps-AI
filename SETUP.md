@@ -73,7 +73,6 @@ When you select **Local Ollama** during `setup.sh`, the script:
 - Deploys `k8s/ollama.yaml` — runs the Ollama LLM server inside the cluster
 - Pulls `tinyllama:latest` into the Ollama pod automatically
 - Configures `LLM_PROVIDER=ollama` in the backend deployment
-- Configures k8sgpt to use `--backend ollama --baseurl http://ollama:11434`
 
 ### Manual steps (without setup.sh)
 
@@ -112,9 +111,6 @@ kubectl exec -n k8s-ai deploy/ollama -- ollama pull gemma:2b
 # Update the backend to use it
 kubectl set env deployment/backend -n k8s-ai OLLAMA_MODEL=gemma:2b
 
-# Also tell k8sgpt
-kubectl exec -n k8s-ai deploy/backend -- \
-  k8sgpt auth add --backend ollama --model gemma:2b --baseurl http://ollama:11434
 ```
 
 ---
@@ -260,7 +256,7 @@ kubectl set env deployment/backend -n k8s-ai LLM_PROVIDER=ollama
 ```
 
 > [!NOTE]
-> After switching, the backend pod automatically restarts and re-runs its postStart hook to reconfigure k8sgpt for the new provider. Watch progress with:
+> After switching, the backend pod automatically restarts and connects to the new provider. Watch progress with:
 > ```bash
 > kubectl rollout status deployment/backend -n k8s-ai
 > ```
@@ -313,16 +309,6 @@ kubectl logs -n k8s-ai deploy/backend | grep -i nvidia
 # Check for: "NVIDIA_API_KEY is not set" or authentication errors
 # Verify the secret exists:
 kubectl get secret nvidia-api-key -n k8s-ai
-```
-
-### k8sgpt auth not configured
-
-```bash
-# Exec into backend and manually re-run auth
-kubectl exec -n k8s-ai deploy/backend -- \
-  k8sgpt auth add --backend ollama --model tinyllama:latest --baseurl http://ollama:11434
-kubectl exec -n k8s-ai deploy/backend -- \
-  k8sgpt auth default --provider ollama
 ```
 
 ### Dashboard shows "Cluster analysis warming up"

@@ -112,7 +112,7 @@ read -r -p "  Press ENTER to continue with the demo…"
 # =============================================================================
 banner "SCENARIO 1 — ImagePullBackOff (Bad Image Tag)"
 
-info "Feature demonstrated: AI pipeline (k8sgpt + ${LLM_PROVIDER^^}) + Guardrails + Approve & Run UI"
+info "Feature demonstrated: AI pipeline (RunWhen + ${LLM_PROVIDER^^}) + Guardrails + Approve & Run UI"
 
 step "Deploying a pod with a deliberately misspelled image tag (nginx:baddytag)…"
 kubectl apply -n "${NAMESPACE}" -f - <<'EOF'
@@ -140,7 +140,7 @@ ok "Scenario 1 is live!"
 echo ""
 echo "  👉  Open the dashboard at http://${NODE_IP}:${FRONTEND_PORT}"
 echo "      You should see an 'ImagePullBackOff' issue card with:"
-echo "        • AI diagnosis from k8sgpt + ${LLM_PROVIDER^^}"
+echo "        • AI diagnosis from RunWhen + ${LLM_PROVIDER^^}"
 echo "        • Suggested Remediation command"
 echo "        • ⚡ Approve & Run button"
 echo "      After clicking 'Approve & Run', the dashboard will START POLLING"
@@ -275,7 +275,7 @@ EOF
 info "The pod will start crash-looping. Prometheus evaluates alert rules every 30 s."
 info "Once the alert fires, Alertmanager will POST to the Antigravity Listener."
 info "The listener will forward it to the backend's /webhook/alert endpoint."
-info "The backend will run k8sgpt scoped to namespace '${NAMESPACE}' and cache the result."
+info "The backend will run RunWhen diagnostics and cache the result."
 echo ""
 
 step "Manually sending a simulated alert payload to speed up the demo…"
@@ -369,7 +369,7 @@ cat <<SUMMARY
   ${BOLD}Feature Coverage:${NC}
 
   ✅  Scenario 1: ImagePullBackOff
-        k8sgpt discovers the failure, ${LLM_PROVIDER^^} explains it, dashboard shows
+        RunWhen discovers the failure, ${LLM_PROVIDER^^} explains it, dashboard shows
         AI diagnosis + suggested kubectl fix. One-click 'Approve & Run'.
         Dashboard POLLS every 5 s (up to 12 times) to auto-update status.
 
@@ -384,7 +384,7 @@ cat <<SUMMARY
 
   ✅  Scenario 4: Event-Driven Alert Loop
         Prometheus → Alertmanager → Antigravity Listener → FastAPI webhook.
-        Backend runs scoped k8sgpt analysis (only the affected namespace)
+        Backend executes mapped RunWhen diagnostic script
         and the result surfaces on the dashboard without manual polling.
 
   ${BOLD}Access Points:${NC}

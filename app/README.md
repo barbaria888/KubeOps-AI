@@ -1,22 +1,23 @@
 # 🧠 Fast AI Backend
 
-This directory contains the core intelligence of the KubeOps-AI system. Built with **FastAPI**, it orchestrates the interaction between K8sGPT, your local Kubernetes cluster, a Vector Database, and the active LLM backend (**Ollama** or **NVIDIA NIM**).
+This directory contains the core intelligence of the KubeOps-AI system. Built with **FastAPI**, it orchestrates the interaction between RunWhen CodeBundles, your local Kubernetes cluster, a Vector Database, and the active LLM backend (**Ollama** or **NVIDIA NIM**).
 
 ## 📁 Directory Structure
 ```text
 app/
 ├── main.py            # FastAPI Entry Point — Routes & Webhook handlers
 ├── agents/            # Autonomous AI Agents
-│   ├── analyzer.py    # Orchestrates the pipeline; scoped namespace support
-│   ├── reasoning.py   # Builds contextual prompt + calls query_llm()
-│   ├── action.py      # Generates safe kubectl command via query_llm()
-│   └── guardrail.py   # Blocks destructive commands before execution
+│   ├── analyzer.py    # Orchestrates the pipeline; scoped namespace support, multi-command validation
+│   ├── reasoning.py   # Builds structured prompt + gathers live cluster context + calls query_llm()
+│   ├── action.py      # Generates ONE safe kubectl remediation command based on diagnostic report
+│   └── guardrail.py   # Blocks destructive commands and validates multi-command list
 └── tools/             # Integrations
-    ├── llm.py         # ⭐ Unified LLM router (Ollama ↔ NVIDIA NIM)
-    ├── k8sgpt.py      # K8sGPT subprocess runner (supports --namespace)
+    ├── llm.py         # ⭐ Unified LLM router (Ollama ↔ NVIDIA NIM) with SRE prompt and RBAC verbs
+    ├── cluster_context.py # 🆕 Live cluster diagnostic data collector (RBAC-safe commands)
+    ├── runwhen.py     # Deterministic router for RunWhen CodeBundle scripts
     ├── kubectl.py     # Kubectl subprocess runner
     ├── ollama.py      # Ollama HTTP client (used when LLM_PROVIDER=ollama)
-    └── vector_store.py # ChromaDB Incident Memory
+    └── vector_store.py # ChromaDB Incident Memory (retrieves top 5 incidents)
 ```
 
 ## 🤖 LLM Abstraction Layer (`app/tools/llm.py`)
@@ -36,17 +37,27 @@ Internally, `query_llm()` reads the `LLM_PROVIDER` env var and routes to the cor
 | `ollama` | Local Ollama via HTTP | Default. Free, private. Requires Ollama pod. |
 | `nvidia` | NVIDIA NIM API via `openai` SDK | Requires `NVIDIA_API_KEY` K8s Secret. |
 
+### Upgraded SRE Reasoning & RBAC Compliance
+The prompt in `llm.py` includes a comprehensive `SRE_SYSTEM_PROMPT` that enforces strict Kubernetes RBAC compliance based on [rbac.yaml](file:///d:/abhi/KubeOps-AI/k8s/rbac.yaml):
+- **Allowed Verbs (ClusterRole)**: `get`, `list`, `watch`, `patch`, `update` (scoped)
+- **Blocked Verbs (ClusterRole)**: `delete`, `create` (except port-forward), `exec`
+- **Guardrail Filter Allowed**: `get`, `describe`, `logs`, `set`, `rollout`, `scale`, `annotate`, `label`, `top`, `cordon`, `uncordon`, `port-forward`
+- **Guardrail Filter Blocked**: `delete`, `rm`, `wipe`, `format`, `exec`, `apply`, `edit`
+
 ## 🔄 How the Pipeline Works
 
 1. **Discovery** (`GET /analyze` or `POST /webhook/alert`):
-   - The backend runs `k8sgpt analyze`. Webhook alerts trigger a targeted namespace analysis (`--namespace <ns>`) via a FastAPI `BackgroundTask`.
+   - The backend executes mapped RunWhen CodeBundle scripts based on alertname via a FastAPI `BackgroundTask`.
    - For every issue found, the text is passed to the **Reasoning Agent**.
 
-2. **Context Retrieval**: The Reasoning Agent queries **ChromaDB** for similar historic incidents.
+2. **Context Retrieval & Live Context Gathering**:
+   - The Reasoning Agent queries **ChromaDB** for similar historic incidents (retrieves up to `5` historical incidents, up from `2`).
+   - The Reasoning Agent gathers live context via `cluster_context.py` running RBAC-compliant commands (e.g., `kubectl get pods -o wide`, `kubectl get events`, `kubectl top pods/nodes`, `kubectl describe pod`, `kubectl logs --tail=50 --previous`).
 
-3. **LLM Reasoning**: `query_llm()` is called with the issue + historic context. Depending on `LLM_PROVIDER`:
-   - **Ollama**: Posts to the local Ollama HTTP API.
-   - **NVIDIA NIM**: Calls the NVIDIA NIM endpoint using the `openai` SDK (`base_url=https://integrate.api.nvidia.com/v1`).
+3. **LLM Reasoning**: `query_llm()` is called with the issue + live cluster context + formatted historic context. Depending on `LLM_PROVIDER`:
+   - **Ollama**: Posts to local Ollama HTTP API (configured with `num_predict: 1024` for full diagnostic output).
+   - **NVIDIA NIM**: Calls the NVIDIA NIM endpoint using the `openai` SDK (`base_url=https://integrate.api.nvidia.com/v1`, configured with `NVIDIA_MAX_TOKENS=512` for targeted analysis).
+   - Outputs a structured plan containing: Root Cause → Evidence → Recommended Fix (ONE command).
 
 4. **Validation**: The **Guardrail Agent** scans the suggested `kubectl` command. Commands containing `delete`, `rm`, `wipe`, or shell injection patterns are marked `safe: false`.
 
@@ -70,7 +81,7 @@ export NVIDIA_API_KEY="nvapi-xxxx..."
 uvicorn app.main:app --reload --port 8000
 ```
 
-*(Backend expects Ollama on `http://localhost:11434` and `kubectl`/`k8sgpt` installed when using Ollama mode).*
+*(Backend expects Ollama on `http://localhost:11434` and `kubectl` installed when using Ollama mode).*
 
 ## 🔌 API Endpoints
 

@@ -42,7 +42,7 @@
   graph LR
       A[React Dashboard] -->|REST API| B[FastAPI Backend]
       B -->|Query / Add| C[(ChromaDB Vector Store)]
-      B -->|Analyze| D[K8sGPT Tool]
+      B -->|Analyze| D[RunWhen CodeBundles]
       B -->|LLM_PROVIDER=ollama| E[Ollama / TinyLlama]
       B -->|LLM_PROVIDER=nvidia| G[NVIDIA NIM API]
       B -->|Execute| F[Kubectl Tool]
@@ -59,7 +59,7 @@
   - **Backend:** Python, FastAPI, Pydantic, ChromaDB, SentenceTransformers, OpenAI SDK
   - **Frontend:** React, Vite, Axios
   - **AI / LLMs:** Ollama (TinyLlama / Gemma 2B) **or** NVIDIA NIM API — user's choice
-  - **Observability:** K8sGPT, Prometheus, Grafana, Alertmanager, kube-state-metrics
+  - **Observability:** RunWhen Skills Registry, Prometheus, Grafana, Alertmanager, kube-state-metrics
   - **Security:** RBAC (least-privilege ServiceAccount + ClusterRole aligned with guardrails)
 
   ---
@@ -213,6 +213,6 @@
   - Prometheus scrapes kube-state-metrics and evaluates alert rules (e.g., `PodCrashLooping`).
   - Alertmanager routes firing alerts to the **Antigravity Listener** webhook.
   - The listener forwards the alert payload to `POST /webhook/alert` on the backend.
-  - Firing alerts initiate a FastAPI `BackgroundTask` running targeted `k8sgpt` analysis (`--namespace <ns>`).
+  - Firing alerts initiate a FastAPI `BackgroundTask` running targeted `RunWhen` analysis (`--namespace <ns>`).
   - Webhook results are cached in-memory and exposed via `GET /webhook/results` for React dashboard polling.
   - When an alert resolves (`status == "resolved"`), the cached entry is automatically cleared.

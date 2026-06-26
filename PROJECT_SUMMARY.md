@@ -14,11 +14,12 @@ The architecture consists of three major pillars: **The Intelligence Core**, **T
 
 ### 1. The Intelligence Core (Backend)
 Built on **FastAPI (Python)**, this is the brain of the operation. It orchestrates the entire agentic loop.
-- **Issue Discovery (`k8sgpt`)**: Scans the cluster state to find faulty resources (e.g., CrashLoopBackOff pods, Pending PVCs).
-- **AI Reasoning (Dual LLM Support)**: Takes the raw failure data and asks either a locally hosted **Ollama** model (TinyLlama/Gemma 2B) or the cloud-based **NVIDIA NIM API** (70B+ parameter models) to explain the issue and formulate a fix. Selectable via `LLM_PROVIDER` environment variable.
-- **Incident Memory (ChromaDB)**: Every successful resolution is embedded via `SentenceTransformers` and stored in ChromaDB. Before reasoning, the backend queries this database so the AI "learns" from past identical outages in your specific environment.
-- **Guardrails**: A strict regex/semantic filter that intercepts any suggested `kubectl` commands. Destructive actions (like `delete namespace` or `rm -rf`) are automatically blocked.
-- **RBAC (Defense-in-Depth)**: The backend pod runs under a dedicated `kubeops-ai-backend` ServiceAccount with a least-privilege `kubeops-ai-operator` ClusterRole. Destructive verbs (`delete`, `create`, `exec`) are blocked at the Kubernetes API level, complementing the Python guardrail.
+- **Issue Discovery (RunWhen Skills Registry)**: Deterministically maps Prometheus alerts to read-only diagnostic scripts for reliable troubleshooting without hallucination.
+- **Live Cluster Context (`cluster_context.py`)**: Gathers real-time cluster telemetry (pod statuses, events, deployments, services, PVCs, node resources, pod specs, and logs) using RBAC-compliant commands to feed the LLM.
+- **AI Reasoning (Dual LLM Support & Multi-Step Plans)**: Queries a locally hosted **Ollama** model (TinyLlama/Gemma 2B) or the cloud-based **NVIDIA NIM API** (70B+ models). The pipeline prompts the LLM to summarize structured diagnostic reports and output exactly ONE safe kubectl remediation command.
+- **Incident Memory (ChromaDB)**: Every successful resolution is embedded via `SentenceTransformers` and stored in ChromaDB. Retries are set to fetch the top `5` historical incidents (up from `2`) to supply richer context.
+- **Guardrails**: A strict pre-execution filter (`validate_action_list`) that parses multi-line actions and filters out blocked keywords like `delete`, `rm`, `wipe`, `format`, `exec`, `apply`, and `edit`.
+- **RBAC (Defense-in-Depth)**: The backend pod runs under a dedicated `kubeops-ai-backend` ServiceAccount with a least-privilege `kubeops-ai-operator` ClusterRole. Verbs are restricted at the API level (allowed: `get`, `list`, `watch`, `patch`, `update` (scoped); blocked: `delete`, `create` (except port-forward), `exec`). Both layers enforce compliance independently.
 
 ### 2. The Operations Dashboard (Frontend)
 Built using **React + Vite**, the frontend provides a sleek, dark-mode, glassmorphic UI (Scorpio Theme) utilizing pure CSS.
@@ -41,8 +42,8 @@ The newest addition to the platform closes the loop from "Polling" to "Event-Dri
 2. **Alerting**: Prometheus evaluates its `alert.rules`, triggers the `PodCrashLooping` alert, and sends it to Alertmanager.
 3. **Routing**: Alertmanager forwards the JSON payload to the **Antigravity Listener**.
 4. **Trigger**: The listener filters the payload and POSTs the metadata to the FastAPI Backend.
-5. **Analysis**: The Backend invokes `k8sgpt analyze` specifically targeting the affected namespace to conserve resources.
-6. **Reasoning**: The Backend queries ChromaDB for past fixes, combines it with the `k8sgpt` output, and prompts the local Ollama LLM.
+5. **Analysis**: The Backend executes a deterministic RunWhen CodeBundle script mapped to the specific alertname.
+6. **Reasoning**: The Backend queries ChromaDB for past fixes, combines it with the RunWhen diagnostic report, and prompts the local Ollama LLM.
 7. **Resolution**: The AI determines the fix. The administrator opens the React Dashboard, sees the event, reviews the AI's explanation and suggested command, and clicks **Approve & Run**.
 8. **Learning**: Upon successful execution, the Backend commits the `(Issue + Fix)` vector into ChromaDB for future reference.
 
@@ -67,4 +68,4 @@ The entire platform is defined via declarative Kubernetes manifests found in the
 - **AI/ML**: Ollama (TinyLlama / Gemma 2B) or NVIDIA NIM API, ChromaDB, SentenceTransformers
 - **Infrastructure**: Kubernetes (K3s / K8s / Kind / Minikube), Prometheus, Grafana, Alertmanager, kube-state-metrics
 - **Security**: RBAC (ServiceAccount + ClusterRole), Python Guardrails
-- **CLI Tools**: K8sGPT, Kubectl
+- **CLI Tools**: RunWhen, Kubectl

@@ -1,7 +1,7 @@
 import logging
 import os
 
-from app.tools.k8sgpt import run_k8sgpt
+from app.tools.runwhen import RunWhenRunner
 from app.tools.kubectl import run_kubectl
 from app.agents.reasoning import explain_issue
 from app.agents.action import suggest_fix
@@ -135,10 +135,11 @@ def _kubectl_fallback(namespace: str = None, pod: str = None) -> list:
 
 # ─── Main Analysis Pipeline ──────────────────────────────────────────────────
 
-def analyze_cluster(namespace: str = None, pod: str = None):
+def analyze_cluster(alertname: str = None, namespace: str = None, pod: str = None):
     """Run the full agentic analysis pipeline.
 
     Args:
+        alertname: The Prometheus alert name to trigger the appropriate RunWhen script.
         namespace: When provided the analysis is scoped to this single
                    Kubernetes namespace (populated by the Prometheus webhook route).
         pod:       Optional pod name from the webhook alert, used by the
@@ -159,19 +160,19 @@ def analyze_cluster(namespace: str = None, pod: str = None):
             "safe": True,
         }]
 
-    issues = run_k8sgpt(namespace=namespace)
+    context = {"namespace": namespace, "pod": pod}
+    runwhen_output = None
+    if alertname:
+        runwhen_output = RunWhenRunner.execute_diagnostic(alertname, context)
 
-    if not isinstance(issues, dict):
-        issues = {"results": []}
+    results_list = []
+    if runwhen_output:
+        results_list.append({"description": runwhen_output})
 
-    results_list = issues.get("results")
-    if results_list is None:
-        results_list = []
-
-    # ── kubectl fallback when k8sgpt finds nothing ───────────────────────
+    # ── kubectl fallback when RunWhen has no mapping ───────────────────────
     if not results_list:
         logger.info(
-            "k8sgpt reported zero cluster faults. "
+            "RunWhen script not found or returned no output. "
             "Falling back to targeted kubectl health checks..."
         )
         results_list = _kubectl_fallback(namespace=namespace, pod=pod)

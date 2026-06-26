@@ -45,8 +45,6 @@ spec:
               value: "true"
             - name: KUBEOPS_MAX_ANALYZED_ISSUES
               value: "1"
-            - name: KUBEOPS_K8SGPT_TIMEOUT_SECONDS
-              value: "120"
             - name: KUBEOPS_KUBECTL_TIMEOUT_SECONDS
               value: "90"
 
@@ -89,31 +87,11 @@ spec:
             # No KUBECONFIG env var needed — kubectl auto-discovers the
             # mounted SA token at /var/run/secrets/kubernetes.io/serviceaccount/.
 
-          # Configures k8sgpt auth on startup depending on LLM_PROVIDER.
-          # Using a shell if/else so both paths are handled in a single postStart hook.
-          lifecycle:
-            postStart:
-              exec:
-                command:
-                  - "/bin/sh"
-                  - "-c"
-                  - |
-                    if [ "${LLM_PROVIDER}" = "nvidia" ]; then
-                      echo "[k8sgpt] Configuring NVIDIA NIM backend..."
-                      k8sgpt auth add \
-                        --backend openai \
-                        --model "${NVIDIA_MODEL}" \
-                        --baseurl "${NVIDIA_BASE_URL}" \
-                        --password "${NVIDIA_API_KEY}" && \
-                      k8sgpt auth default --provider openai
-                    else
-                      echo "[k8sgpt] Configuring Ollama backend..."
-                      k8sgpt auth add \
-                        --backend ollama \
-                        --model "${OLLAMA_MODEL}" \
-                        --baseurl "http://ollama:11434" && \
-                      k8sgpt auth default --provider ollama
-                    fi
+          # RunWhen script execution path
+          volumeMounts:
+            - name: runwhen-skills
+              mountPath: /opt/runwhen
+
 
           resources:
             limits:
@@ -123,8 +101,20 @@ spec:
               memory: "256Mi"
               cpu: "100m"
 
-          # No volume mounts needed — in-cluster SA token is auto-mounted
-          # at /var/run/secrets/kubernetes.io/serviceaccount/ by Kubernetes.
+      initContainers:
+        - name: fetch-runwhen-skills
+          image: alpine/git:latest
+          command:
+            - "sh"
+            - "-c"
+            - "git clone --depth 1 https://github.com/runwhen-contrib/rw-cli-codecollection.git /opt/runwhen && chown -R 1000:1000 /opt/runwhen"
+          volumeMounts:
+            - name: runwhen-skills
+              mountPath: /opt/runwhen
+
+      volumes:
+        - name: runwhen-skills
+          emptyDir: {}
 
 ---
 apiVersion: v1

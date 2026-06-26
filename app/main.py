@@ -45,7 +45,7 @@ _webhook_results: dict = {}
 def _run_webhook_analysis(alertname: str, namespace: str, pod: str):
     """Triggered asynchronously when a firing Prometheus alert arrives.
 
-    Runs the full k8sgpt + LLM reasoning pipeline for the affected namespace
+    Runs the full RunWhen + LLM reasoning pipeline for the affected namespace
     and caches the result so the /analyze endpoint can surface it immediately.
     """
     logger.info(
@@ -53,7 +53,7 @@ def _run_webhook_analysis(alertname: str, namespace: str, pod: str):
         alertname, namespace, pod,
     )
     try:
-        results = analyze_cluster(namespace=namespace, pod=pod)
+        results = analyze_cluster(alertname=alertname, namespace=namespace, pod=pod)
         _webhook_results[(namespace, pod)] = {
             "alertname": alertname,
             "namespace": namespace,

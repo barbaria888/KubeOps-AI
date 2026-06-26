@@ -4,7 +4,7 @@
 # This manifest creates a dedicated ServiceAccount for the backend pod and
 # grants it:
 #   1. Cluster-wide READ-ONLY access to all standard resources so that
-#      k8sgpt and kubectl can inspect every namespace without 403 errors.
+#      RunWhen and kubectl can inspect every namespace without 403 errors.
 #   2. Scoped WRITE permissions only for the verbs the guardrail
 #      (app/agents/guardrail.py) explicitly allows.
 #
@@ -35,7 +35,7 @@ metadata:
     app.kubernetes.io/component: backend
 rules:
   # ═══════════════════════════════════════════════════════════════════════════
-  # READ-ONLY — Cluster-wide visibility for k8sgpt and kubectl
+  # READ-ONLY — Cluster-wide visibility for RunWhen and kubectl
   # ═══════════════════════════════════════════════════════════════════════════
 
   # ─── Core API ("") ─────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ rules:
       - namespaces
       - events
       - configmaps
-      - secrets               # k8sgpt needs to detect missing/bad secrets
+      - secrets               # RunWhen might need to inspect secrets
       - replicationcontrollers
       - persistentvolumeclaims
       - persistentvolumes
@@ -113,7 +113,7 @@ rules:
       - clusterrolebindings
     verbs: ["get", "list", "watch"]
 
-  # ─── CRDs (read-only — k8sgpt custom analyzer support) ─────────────────────
+  # ─── CRDs (read-only) ─────────────────────
   - apiGroups: ["apiextensions.k8s.io"]
     resources:
       - customresourcedefinitions
