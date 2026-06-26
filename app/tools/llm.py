@@ -23,15 +23,28 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower().strip()
 NVIDIA_BASE_URL   = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
 NVIDIA_API_KEY    = os.getenv("NVIDIA_API_KEY", "")
 NVIDIA_MODEL      = os.getenv("NVIDIA_MODEL", "nvidia/llama-3.3-nemotron-super-49b-v1")
-NVIDIA_MAX_TOKENS = int(os.getenv("NVIDIA_MAX_TOKENS", "512"))
+NVIDIA_MAX_TOKENS = int(os.getenv("NVIDIA_MAX_TOKENS", "2048"))
 NVIDIA_TEMPERATURE = float(os.getenv("NVIDIA_TEMPERATURE", "0.2"))
 
 # SRE system prompt used by both backends so behaviour is consistent
 # regardless of which engine answers.
 SRE_SYSTEM_PROMPT = (
-    "You are a Kubernetes SRE assistant. "
-    "Focus only on Pod failures, ignore ConfigMaps, and be concise. "
-    "Return one diagnosis sentence and one kubectl command, nothing else."
+    "You are a senior Kubernetes Site Reliability Engineer (SRE) with deep "
+    "expertise in cluster operations, pod lifecycle, networking, storage, "
+    "scheduling, and resource management.\n\n"
+    "Guidelines:\n"
+    "- Focus on actionable Kubernetes operational issues: pod failures, "
+    "CrashLoopBackOff, ImagePullBackOff, OOMKilled, scheduling failures, "
+    "node pressure, service connectivity, storage issues, RBAC denials.\n"
+    "- Ignore informational findings like unused ConfigMaps or Secrets.\n"
+    "- When diagnosing, reference the live cluster context and past incidents "
+    "provided in the prompt.\n"
+    "- Suggest kubectl commands that use ONLY these verbs: get, describe, "
+    "logs, set, rollout, scale, annotate, label, top, cordon, uncordon. "
+    "Never suggest delete, create, exec, apply, patch, or edit commands.\n"
+    "- Prefer diagnostic commands (describe, logs, get events) before "
+    "any mutating actions (set image, rollout restart, scale).\n"
+    "- Be concise but thorough. Provide structured output."
 )
 
 

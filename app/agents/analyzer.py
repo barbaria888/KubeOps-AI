@@ -5,7 +5,7 @@ from app.tools.k8sgpt import run_k8sgpt
 from app.tools.kubectl import run_kubectl
 from app.agents.reasoning import explain_issue
 from app.agents.action import suggest_fix
-from app.agents.guardrail import validate_action
+from app.agents.guardrail import validate_action, validate_action_list
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +22,20 @@ def _fallback_explanation(description: str) -> str:
     return f"Cluster analysis reported: {description or 'No details were returned.'}"
 
 
-def _fallback_action(description: str) -> str:
+def _fallback_action(description: str, namespace: str = "k8s-ai") -> str:
+    """Return a sensible default kubectl command when AI is unavailable."""
+    ns = namespace or "k8s-ai"
     if "ImagePullBackOff" in description or "ErrImagePull" in description:
-        return "kubectl describe pod <pod-name>"
+        return f"kubectl describe pods -n {ns}"
     if "CrashLoopBackOff" in description:
-        return "kubectl logs <pod-name> --previous"
-    return "kubectl get pods -A"
+        return f"kubectl logs --previous -l app -n {ns} --tail=50"
+    if "OOMKilled" in description:
+        return f"kubectl top pods -n {ns}"
+    if "Pending" in description:
+        return f"kubectl describe pods -n {ns}"
+    if "NodeNotReady" in description or "node" in description.lower():
+        return "kubectl get nodes -o wide"
+    return f"kubectl get pods -n {ns} -o wide"
 
 
 def _is_gibberish(text: str) -> bool:
@@ -168,6 +176,8 @@ def analyze_cluster(namespace: str = None, pod: str = None):
         )
         results_list = _kubectl_fallback(namespace=namespace, pod=pod)
 
+    ns = namespace or "k8s-ai"
+
     for issue in results_list[:max_issues]:
         if not isinstance(issue, dict):
             issue = {"description": issue}
@@ -175,33 +185,57 @@ def analyze_cluster(namespace: str = None, pod: str = None):
         description = _safe_text(issue.get("description", ""))
 
         explanation = _fallback_explanation(description)
-        action = _fallback_action(description)
+        action = _fallback_action(description, namespace=ns)
+        safe_actions_list = []
 
         if _is_full_ai_enabled():
+            # ── AI Explanation (with live cluster context) ────────────
             try:
-                ai_explanation = _safe_text(explain_issue(description))
+                ai_explanation = _safe_text(
+                    explain_issue(description, namespace=ns, pod=pod)
+                )
                 if ai_explanation and not _looks_like_ai_error(ai_explanation):
                     explanation = ai_explanation
             except Exception:
-                pass
+                logger.debug("AI explanation failed, using fallback.", exc_info=True)
 
+            # ── AI Remediation (multi-step plan) ─────────────────────
             try:
-                ai_action = _safe_text(suggest_fix(description))
-                if ai_action and not _looks_like_ai_error(ai_action):
-                    action = ai_action
+                ai_action_raw = _safe_text(
+                    suggest_fix(description, namespace=ns, pod=pod)
+                )
+                if ai_action_raw and not _looks_like_ai_error(ai_action_raw):
+                    # Try multi-command validation first
+                    all_safe, validated_cmds = validate_action_list(ai_action_raw)
+                    if validated_cmds:
+                        # Use the first safe command as the primary action
+                        # (backward compat with frontend)
+                        action = validated_cmds[0]
+                        safe_actions_list = validated_cmds
+                    elif validate_action(ai_action_raw):
+                        # Fallback: maybe the LLM returned a single command
+                        action = ai_action_raw
             except Exception:
-                pass
+                logger.debug("AI action failed, using fallback.", exc_info=True)
 
+        # ── Final guardrail check ────────────────────────────────────
         safe = validate_action(action)
         if not safe:
-            action = _fallback_action(description)
+            action = _fallback_action(description, namespace=ns)
             safe = validate_action(action)
+            safe_actions_list = []
 
-        results.append({
+        result_entry = {
             "issue": description,
             "explanation": explanation,
             "suggested_action": action,
-            "safe": safe
-        })
+            "safe": safe,
+        }
+
+        # Include multi-step plan when available (new field, backward compat)
+        if safe_actions_list:
+            result_entry["suggested_actions"] = safe_actions_list
+
+        results.append(result_entry)
 
     return results

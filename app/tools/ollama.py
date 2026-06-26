@@ -15,13 +15,9 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "tinyllama:latest")
 OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "60"))
 OLLAMA_FALLBACK_MODELS = os.getenv("OLLAMA_FALLBACK_MODELS", "tinyllama:latest,gemma:2b")
 
-# SRE system prompt injected into every Ollama request so the model behaves as a
-# focused Kubernetes SRE agent regardless of the individual user prompt.
-SRE_SYSTEM_PROMPT = (
-    "You are a Kubernetes SRE assistant in a CPU-only environment. "
-    "Focus only on Pod failures, ignore ConfigMaps, and be concise. "
-    "Return one diagnosis sentence and one kubectl command, nothing else."
-)
+# Import the shared SRE system prompt from the unified LLM module so
+# behaviour stays consistent regardless of which backend is active.
+from app.tools.llm import SRE_SYSTEM_PROMPT
 
 
 def query_ollama(prompt: str) -> str:
@@ -50,7 +46,7 @@ def query_ollama(prompt: str) -> str:
         "prompt": prompt,
         "stream": False,
         "options": {
-            "num_predict": 80,
+            "num_predict": 1024,
             "temperature": 0.2
         }
     }
