@@ -28,7 +28,7 @@
   - **🐳 Cloud-Native Ready**: Includes native Kubernetes Deployments, Services, and Dockerfiles to run directly within your clusters.
   - **🚀 One-Command Setup**: Interactive `setup.sh` handles LLM provider selection, API key secrets, deployment, and health checks automatically.
 
-  <img width="936" height="467" alt="dashboard-empty" src="https://github.com/user-attachments/assets/d8667305-084f-4848-a4dc-7f657dfb6ba8" />
+  <img width="935" height="467" alt="dashboard-empty" src="https://github.com/user-attachments/assets/d8667305-084f-4848-a4dc-7f657dfb6ba8" />
 
   ---
 
