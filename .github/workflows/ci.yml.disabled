@@ -2,6 +2,7 @@ name: Build and Push Agent
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:  'images/**'
 
 jobs:
   build:
