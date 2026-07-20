@@ -1,12 +1,12 @@
-  # KubeOps-AI
 
-  <div align="center">
+  <div align="center">  <h1 > KubeOps-AI  <img src="https://static.vecteezy.com/system/resources/thumbnails/050/143/099/small_2x/scorpion-isolated-on-transparent-background-png.png" height="70"> </h1>
     <img alt="Kubernetes" src="https://img.shields.io/badge/kubernetes-%23326ce5.svg?style=for-the-badge&logo=kubernetes&logoColor=white"/>
     <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi"/>
     <img alt="React" src="https://img.shields.io/badge/react-%2320232a.svg?style=for-the-badge&logo=react&logoColor=%2361DAFB"/>
     <img alt="Python" src="https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54"/>
     <img alt="NVIDIA" src="https://img.shields.io/badge/NVIDIA NIM-76B900?style=for-the-badge&logo=nvidia&logoColor=white"/>
     <img alt="Ollama" src="https://img.shields.io/badge/Ollama-000000?style=for-the-badge&logo=ollama&logoColor=white"/>
+    
   </div>
 
   <br/>
