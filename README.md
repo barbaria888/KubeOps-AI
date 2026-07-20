@@ -13,7 +13,7 @@
 
   **KubeOps-AI** is an autonomous Kubernetes troubleshooting platform that uses AI (your choice of **local Ollama** or **NVIDIA NIM cloud LLMs**) to analyze cluster faults, deduce root causes, suggest actionable fixes, and maintain an **Incident Memory** vector database. Features a full **Approve & Run** interface to remediate issues safely in one click.
 
-  <img width="1536" height="1024" alt="Image" src="https://github.com/user-attachments/assets/045b17ed-4c3b-474e-8103-4cf480e25d7d" />
+  <img width="1536" height="1024" alt="Image" src="https://github.com/barbaria888/KubeOps-AI/blob/main/images/updated-architecture.png" />
 
   ---
 
@@ -32,7 +32,7 @@
 
   ---
 
-  <img width="843" height="473" alt="Image" src="https://github.com/user-attachments/assets/13f69da5-2611-431d-a3ee-d3eb8b81a77f" />
+  
 
   ---
 
@@ -93,7 +93,7 @@
   | Option | Description | Best For |
   |---|---|---|
   | **Local Ollama** | TinyLlama or Gemma 2B runs inside the cluster. Free, private, no external API. | Air-gapped, demos, CPU nodes |
-  | **NVIDIA NIM API** | Hosted inference on NVIDIA GPUs via the NVIDIA NIM platform. Fast, high-quality 70B+ models. | Production demos, best accuracy |
+  | **NVIDIA NIM API** | Hosted inference on NVIDIA GPUs via the NVIDIA NIM platform. Fast, high-quality 70B+ models. | Actual demos, best accuracy |
 
   ### Quick Start with Ollama (Local)
 
